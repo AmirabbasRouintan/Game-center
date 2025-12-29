@@ -24,12 +24,6 @@
 .DS_Store
 *.pem
 
-# editor/agent folders
-.marscode/
-
-# nested repo leftovers
-/game_center/_git_bak/
-
 # debug
 npm-debug.log*
 yarn-debug.log*
