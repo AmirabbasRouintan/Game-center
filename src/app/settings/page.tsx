@@ -3,70 +3,65 @@
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
-import { Download, Upload, FileSpreadsheet, Eye, EyeOff, DollarSign, User, Lock, Edit, Image as ImageIcon, X, Loader } from "lucide-react";
+import { Download, Upload, Eye, EyeOff, DollarSign, User, Lock, Edit, Image as ImageIcon, X } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
+import Image from "next/image";
 import { numberToWords } from "@/utils/numberToWords";
 import ShinyText from "@/components/ShinyText";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { settingsStore } from "@/data/settingsStore";
+import { timerStore } from "@/data/timerStore";
+import { competitionsStore } from "@/data/competitionsStore";
+
 export default function SettingsPage() {
   const {
     t,
     language
   } = useLanguage();
-  const [darkVeilEnabled, setDarkVeilEnabled] = useState(true);
-  const [darkVeilOpacity, setDarkVeilOpacity] = useState(0.5);
-  const [darkVeilTint, setDarkVeilTint] = useState<string>('#ffffff');
+  
+  // State initialization with defaults
+  const [darkVeilEnabled, setDarkVeilEnabled] = useState<boolean>(true);
+  const [darkVeilOpacity, setDarkVeilOpacity] = useState<number>(0.5);
   const [exportFormat, setExportFormat] = useState<'json' | 'excel'>('json');
   const [showClearDialog, setShowClearDialog] = useState(false);
-  const [costPerHour, setCostPerHour] = useState('');
-  const [gameCenterName, setGameCenterName] = useState('');
+  const [costPerHour, setCostPerHour] = useState<string>('');
+  const [gameCenterName, setGameCenterName] = useState<string>('');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [adminPasswordHash, setAdminPasswordHash] = useState(''); // Store hash to verify current password locally if needed
 
-  const [loadingEnabled, setLoadingEnabled] = useState(true);
-  const [loadingDurationMs, setLoadingDurationMs] = useState(2000);
+  const [loadingEnabled, setLoadingEnabled] = useState<boolean>(true);
+  const [loadingDurationMs, setLoadingDurationMs] = useState<number>(2000);
+
+  // Home page UI
+  const [homeShowTopTabs, setHomeShowTopTabs] = useState<boolean>(true);
+  const [homeDefaultTab, setHomeDefaultTab] = useState<'stable' | 'timer'>('stable');
+
+  // Load settings on mount
   useEffect(() => {
-    const saved = localStorage.getItem('darkVeilEnabled');
-    if (saved !== null) {
-      setDarkVeilEnabled(JSON.parse(saved));
-    }
-    const savedOpacity = localStorage.getItem('darkVeilOpacity');
-    if (savedOpacity !== null) {
-      setDarkVeilOpacity(parseFloat(savedOpacity));
-    }
-    const savedTint = localStorage.getItem('darkVeilTint');
-    if (savedTint) {
-      setDarkVeilTint(savedTint);
-    }
-    const savedCost = localStorage.getItem('costPerHour');
-    if (savedCost) {
-      setCostPerHour(savedCost);
-    }
-    const savedLoadingEnabled = localStorage.getItem('loadingEnabled');
-    if (savedLoadingEnabled !== null) {
-      setLoadingEnabled(JSON.parse(savedLoadingEnabled));
-    }
-    const savedLoadingDuration = localStorage.getItem('loadingDurationMs');
-    if (savedLoadingDuration !== null && !isNaN(parseInt(savedLoadingDuration))) {
-      setLoadingDurationMs(parseInt(savedLoadingDuration));
-    }
-
-    const savedName = localStorage.getItem('gameCenterName');
-    if (savedName) {
-      setGameCenterName(savedName);
-    }
-    const savedBgImage = localStorage.getItem('backgroundImage');
-    if (savedBgImage) {
-      setBackgroundImage(savedBgImage);
-    }
+    const load = async () => {
+      const s = await settingsStore.load();
+      setDarkVeilEnabled(s.darkVeilEnabled);
+      setDarkVeilOpacity(s.darkVeilOpacity);
+      setCostPerHour(s.costPerHour);
+      setGameCenterName(s.gameCenterName);
+      setBackgroundImage(s.backgroundImage);
+      setLoadingEnabled(s.loadingEnabled);
+      setLoadingDurationMs(s.loadingDurationMs);
+      setHomeShowTopTabs(s.homeShowTopTabs);
+      setHomeDefaultTab(s.homeDefaultTab);
+      setAdminPasswordHash(s.adminPassword);
+    };
+    load();
   }, []);
+
   const toggleDarkVeil = (checked: boolean) => {
     setDarkVeilEnabled(checked);
-    localStorage.setItem('darkVeilEnabled', JSON.stringify(checked));
+    settingsStore.savePartial({ darkVeilEnabled: checked });
     window.dispatchEvent(new CustomEvent('darkVeilToggle', {
       detail: checked
     }));
@@ -74,27 +69,20 @@ export default function SettingsPage() {
   const handleOpacityChange = (value: number[]) => {
     const newOpacity = value[0];
     setDarkVeilOpacity(newOpacity);
-    localStorage.setItem('darkVeilOpacity', newOpacity.toString());
+    settingsStore.savePartial({ darkVeilOpacity: newOpacity });
     window.dispatchEvent(new CustomEvent('darkVeilOpacityChange', {
       detail: newOpacity
     }));
   };
-  const setDarkVeilTintAndPersist = (hex: string) => {
-    setDarkVeilTint(hex);
-    localStorage.setItem('darkVeilTint', hex);
-    window.dispatchEvent(new CustomEvent('darkVeilTintChange', {
-      detail: hex
-    }));
-  };
-  const exportData = () => {
-    const gameCards = localStorage.getItem('gameCards') || '[]';
-    const tournaments = localStorage.getItem('tournaments') || '[]';
+  const exportData = async () => {
+    const cards = await timerStore.loadCards();
+    const tournaments = competitionsStore.loadTournaments<unknown[]>();
+    const settings = await settingsStore.load();
+    
     const data = {
-      gameCards: JSON.parse(gameCards),
-      tournaments: JSON.parse(tournaments),
-      settings: {
-        darkVeilEnabled
-      },
+      gameCards: cards,
+      tournaments: tournaments,
+      settings: settings,
       exportDate: new Date().toISOString()
     };
     if (exportFormat === 'json') {
@@ -109,11 +97,14 @@ export default function SettingsPage() {
       URL.revokeObjectURL(url);
     } else {
       let csv = 'Type,Name,Time,Status,Created\n';
-      data.gameCards.forEach((card: any) => {
+      data.gameCards.forEach((card: { title: string; time: number; isRunning: boolean; id: number | string }) => {
         csv += `Game Card,"${card.title}",${card.time},${card.isRunning ? 'Running' : 'Stopped'},${new Date(card.id).toLocaleString()}\n`;
       });
-      data.tournaments.forEach((tournament: any) => {
-        csv += `Tournament,"${tournament.name}",${tournament.players.length} players,Completed,${new Date().toLocaleString()}\n`;
+      const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
+      (Array.isArray(data.tournaments) ? data.tournaments : []).forEach((tournament) => {
+        const name = isRecord(tournament) && typeof tournament.name === 'string' ? tournament.name : 'Tournament';
+        const playersLen = isRecord(tournament) && Array.isArray(tournament.players) ? tournament.players.length : 0;
+        csv += `Tournament,"${name}",${playersLen} players,Completed,${new Date().toLocaleString()}\n`;
       });
       const blob = new Blob([csv], {
         type: 'text/csv'
@@ -130,73 +121,139 @@ export default function SettingsPage() {
     const file = event.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = e => {
+    reader.onload = async e => {
       try {
         const content = e.target?.result as string;
         const data = JSON.parse(content);
         if (data.gameCards) {
-          localStorage.setItem('gameCards', JSON.stringify(data.gameCards));
+          await timerStore.saveCards(data.gameCards);
         }
         if (data.tournaments) {
-          localStorage.setItem('tournaments', JSON.stringify(data.tournaments));
+          competitionsStore.saveTournaments(data.tournaments);
         }
-        if (data.settings?.darkVeilEnabled !== undefined) {
-          setDarkVeilEnabled(data.settings.darkVeilEnabled);
-          localStorage.setItem('darkVeilEnabled', JSON.stringify(data.settings.darkVeilEnabled));
-          window.dispatchEvent(new CustomEvent('darkVeilToggle', {
-            detail: data.settings.darkVeilEnabled
-          }));
+        if (data.settings) {
+          const s = data.settings;
+          // Build a patch object
+          const patch: Partial<import('@/data/settingsStore').AppSettings> = {};
+          
+          if (s.darkVeilEnabled !== undefined) {
+             setDarkVeilEnabled(s.darkVeilEnabled);
+             patch.darkVeilEnabled = s.darkVeilEnabled;
+             window.dispatchEvent(new CustomEvent('darkVeilToggle', { detail: s.darkVeilEnabled }));
+          }
+          if (s.darkVeilOpacity !== undefined) {
+             setDarkVeilOpacity(s.darkVeilOpacity);
+             patch.darkVeilOpacity = s.darkVeilOpacity;
+             window.dispatchEvent(new CustomEvent('darkVeilOpacityChange', { detail: s.darkVeilOpacity }));
+          }
+          if (s.darkVeilTint !== undefined) {
+             patch.darkVeilTint = s.darkVeilTint;
+          }
+          if (s.costPerHour !== undefined) {
+            setCostPerHour(String(s.costPerHour));
+            patch.costPerHour = String(s.costPerHour);
+          }
+          if (s.loadingEnabled !== undefined) {
+            setLoadingEnabled(!!s.loadingEnabled);
+            patch.loadingEnabled = !!s.loadingEnabled;
+          }
+          if (s.loadingDurationMs !== undefined) {
+            setLoadingDurationMs(Number(s.loadingDurationMs));
+            patch.loadingDurationMs = Number(s.loadingDurationMs);
+          }
+          if (s.gameCenterName !== undefined) {
+            setGameCenterName(String(s.gameCenterName));
+            patch.gameCenterName = String(s.gameCenterName);
+            window.dispatchEvent(new CustomEvent('gameCenterNameChange', { detail: String(s.gameCenterName) }));
+          }
+          if (s.backgroundImage !== undefined) {
+            setBackgroundImage(s.backgroundImage);
+            patch.backgroundImage = s.backgroundImage;
+            window.dispatchEvent(new CustomEvent('backgroundImageChange', { detail: s.backgroundImage }));
+          }
+          if (s.homeShowTopTabs !== undefined) {
+            setHomeShowTopTabs(!!s.homeShowTopTabs);
+            patch.homeShowTopTabs = !!s.homeShowTopTabs;
+          }
+          if (s.homeDefaultTab !== undefined) {
+            const v = s.homeDefaultTab === 'timer' ? 'timer' : 'stable';
+            setHomeDefaultTab(v);
+            patch.homeDefaultTab = v;
+          }
+          
+          await settingsStore.savePartial(patch);
         }
         alert('Data imported successfully! Please refresh the page to see changes.');
-      } catch (error) {
+      } catch {
         alert('Error importing data. Please check the file format.');
       }
     };
     reader.readAsText(file);
   };
-  const clearAllData = () => {
-    localStorage.removeItem('gameCards');
-    localStorage.removeItem('tournaments');
+  const clearAllData = async () => {
+    await timerStore.saveCards([]);
+    await timerStore.saveClients([]);
+    await timerStore.saveHistory([]);
+    competitionsStore.saveTournaments([]);
     setShowClearDialog(false);
     alert(t('settings.clearWarning'));
   };
   const saveCostPerHour = () => {
-    localStorage.setItem('costPerHour', costPerHour);
+    settingsStore.savePartial({ costPerHour });
     alert(t('settings.nameUpdated'));
   };
   const updateGameCenterName = () => {
     if (gameCenterName.trim()) {
-      localStorage.setItem('gameCenterName', gameCenterName);
+      settingsStore.savePartial({ gameCenterName });
       alert(t('settings.nameUpdated'));
       window.dispatchEvent(new CustomEvent('gameCenterNameChange', {
         detail: gameCenterName
       }));
     }
   };
-  const updateCredentials = () => {
-    const savedPassword = localStorage.getItem('adminPassword');
-    if (currentPassword !== savedPassword) {
+  
+  // This needs bcrypt to verify, but we can't run bcrypt.compareSync properly if we don't import it.
+  // We can either import bcrypt here or just trust the change (less secure but works for local).
+  // Actually, we can import bcrypt since it's used in AuthContext
+  const updateCredentials = async () => {
+    // Ideally we verify old password. 
+    // Since we don't have bcrypt imported here, let's skip verification or rely on AuthContext if we refactor.
+    // For now, let's just save.
+    // Wait, I can import bcryptjs.
+    
+    // Dynamic import to avoid SSR issues if any, though standard import is fine usually.
+    const bcrypt = (await import('bcryptjs')).default;
+
+    if (!bcrypt.compareSync(currentPassword, adminPasswordHash)) {
       alert(t('login.invalidCredentials'));
       return;
     }
-    if (newUsername.trim()) {
-      localStorage.setItem('adminUsername', newUsername);
-    }
+    
+    const patch: Partial<import('@/data/settingsStore').AppSettings> = {};
+    if (newUsername.trim()) patch.adminUsername = newUsername;
     if (newPassword.trim()) {
-      localStorage.setItem('adminPassword', newPassword);
+        const salt = bcrypt.genSaltSync(10);
+        patch.adminPassword = bcrypt.hashSync(newPassword, salt);
     }
+    
+    await settingsStore.savePartial(patch);
+    
+    // Update local state hash so subsequent changes don't fail immediately
+    if (patch.adminPassword) setAdminPasswordHash(patch.adminPassword);
+
     setCurrentPassword('');
     setNewUsername('');
     setNewPassword('');
     alert(t('settings.credentialsUpdated'));
   };
+  
   const handleImageUpload = (file: File) => {
     if (file && file.type.startsWith('image/')) {
       const reader = new FileReader();
       reader.onload = e => {
         const result = e.target?.result as string;
         setBackgroundImage(result);
-        localStorage.setItem('backgroundImage', result);
+        settingsStore.savePartial({ backgroundImage: result });
         window.dispatchEvent(new CustomEvent('backgroundImageChange', {
           detail: result
         }));
@@ -221,7 +278,7 @@ export default function SettingsPage() {
   };
   const removeBackgroundImage = () => {
     setBackgroundImage(null);
-    localStorage.removeItem('backgroundImage');
+    settingsStore.savePartial({ backgroundImage: null });
     window.dispatchEvent(new CustomEvent('backgroundImageChange', {
       detail: null
     }));
@@ -229,8 +286,7 @@ export default function SettingsPage() {
   const costInWords = costPerHour && !isNaN(Number(costPerHour)) && Number(costPerHour) > 0 ? numberToWords(Number(costPerHour), language) : '';
 
   const saveLoadingSettings = (nextEnabled: boolean, nextDurationMs: number) => {
-    localStorage.setItem('loadingEnabled', JSON.stringify(nextEnabled));
-    localStorage.setItem('loadingDurationMs', String(nextDurationMs));
+    settingsStore.savePartial({ loadingEnabled: nextEnabled, loadingDurationMs: nextDurationMs });
 
     window.dispatchEvent(new CustomEvent('loadingEnabledChange', { detail: nextEnabled }));
     window.dispatchEvent(new CustomEvent('loadingDurationChange', { detail: nextDurationMs }));
@@ -264,29 +320,73 @@ export default function SettingsPage() {
 
           {}
           <section className="bg-white/10 dark:bg-white/5 backdrop-blur-lg rounded-lg border border-white/20 p-6 shadow-lg transition-all duration-300 hover:shadow-xl hover:border-white/30 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-200">
-            <h2 className="text-xl font-semibold text-white">{language === 'fa' ? 'لودینگ' : 'Loading'}</h2>
+            <h2 className="text-xl font-semibold text-white">{language === 'fa' ? 'صفحه اصلی' : 'Home page'}</h2>
             <p className="mt-2 text-sm text-zinc-400">
-              {language === 'fa' ? 'کنترل نمایش لودینگ و زمان آن' : 'Control loading screen visibility and duration'}
+              {language === 'fa' ? 'نمایش تب‌ها و تب پیش‌فرض در صفحه اصلی.' : 'Control top tabs visibility and default tab on the home page.'}
             </p>
 
             <div className="mt-4 space-y-4">
               <div className="flex items-center justify-between p-4 bg-white/5 rounded-lg border border-white/10">
-                <div className="flex items-center gap-3">
-                  <Loader className={`w-5 h-5 transition-all duration-300 ${loadingEnabled ? 'text-primary' : 'text-zinc-400'}`} />
-                  <div>
-                    <span className="text-white font-medium block">{language === 'fa' ? 'نمایش لودینگ' : 'Show loading'}</span>
-                    <span className="text-xs text-zinc-400">{language === 'fa' ? 'فعال/غیرفعال کردن لودینگ ابتدایی' : 'Enable/disable the startup loading screen'}</span>
-                  </div>
+                <div>
+                  <span className="text-white font-medium block">{language === 'fa' ? 'نمایش تب‌ها' : 'Show top tabs'}</span>
+                  <span className="text-xs text-zinc-400">{language === 'fa' ? 'اگر خاموش شود، سوئیچ تایمر/پایدار مخفی می‌شود.' : 'If off, the Timer/Stable switch will be hidden.'}</span>
                 </div>
                 <Switch
-                  checked={loadingEnabled}
+                  checked={homeShowTopTabs}
                   onCheckedChange={(checked) => {
-                    setLoadingEnabled(checked);
-                    saveLoadingSettings(checked, loadingDurationMs);
+                    setHomeShowTopTabs(checked);
+                    settingsStore.savePartial({ homeShowTopTabs: checked });
                   }}
                 />
               </div>
 
+              <div className="p-4 bg-white/5 rounded-lg border border-white/10">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <span className="text-white font-medium block">{language === 'fa' ? 'تب پیش‌فرض' : 'Default tab'}</span>
+                    <span className="text-xs text-zinc-400">{language === 'fa' ? 'صفحه‌ای که هنگام ورود باز می‌شود.' : 'The tab shown when opening the home page.'}</span>
+                  </div>
+
+                  <select
+                    value={homeDefaultTab}
+                    onChange={(e) => {
+                      const v = e.target.value === 'timer' ? 'timer' : 'stable';
+                      setHomeDefaultTab(v);
+                      settingsStore.savePartial({ homeDefaultTab: v });
+                    }}
+                    className="px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white"
+                  >
+                    <option value="stable">{language === 'fa' ? 'پایدار' : 'Stable'}</option>
+                    <option value="timer">{language === 'fa' ? 'تایمر' : 'Timer'}</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="bg-white/10 dark:bg-white/5 backdrop-blur-lg rounded-lg border border-white/20 p-6 shadow-lg transition-all duration-300 hover:shadow-xl hover:border-white/30 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-200">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <h2 className="text-xl font-semibold text-white">{language === 'fa' ? 'لودینگ' : 'Loading'}</h2>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-white/80">{language === 'fa' ? 'نمایش' : 'Show'}</span>
+                  <Switch
+                    checked={loadingEnabled}
+                    onCheckedChange={(checked) => {
+                      setLoadingEnabled(checked);
+                      saveLoadingSettings(checked, loadingDurationMs);
+                    }}
+                  />
+                </div>
+              </div>
+
+              <p className="text-sm text-zinc-400 mt-1">
+                {language === 'fa' ? 'کنترل نمایش لودینگ و زمان آن' : 'Control loading screen visibility and duration'}
+              </p>
+            </div>
+
+            <div className="mt-4 space-y-4">
               <div className={`p-4 bg-white/5 rounded-lg border border-white/10 transition-all ${loadingEnabled ? 'opacity-100' : 'opacity-50 pointer-events-none'}`}>
                 <div className="flex justify-between items-center mb-4">
                   <span className="text-sm text-zinc-300">{language === 'fa' ? 'زمان لودینگ' : 'Loading duration'}</span>
@@ -354,7 +454,14 @@ export default function SettingsPage() {
               {}
               <div onDrop={handleDrop} onDragOver={handleDragOver} onDragLeave={handleDragLeave} className={`relative border-2 border-dashed rounded-lg p-6 transition-all duration-300 ${isDragging ? 'border-primary bg-primary/10' : 'border-white/20 hover:border-white/40'}`}>
                 {backgroundImage ? <div className="relative">
-                    <img src={backgroundImage} alt="Background preview" className="w-full h-32 object-cover rounded-lg" />
+                    <Image
+                      src={backgroundImage}
+                      alt="Background preview"
+                      width={800}
+                      height={256}
+                      className="w-full h-32 object-cover rounded-lg"
+                      unoptimized
+                    />
                     <button onClick={removeBackgroundImage} className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white rounded-full p-1 transition-all">
                       <X className="w-4 h-4" />
                     </button>

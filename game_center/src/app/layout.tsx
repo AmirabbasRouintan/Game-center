@@ -1,6 +1,5 @@
 'use client';
 
-import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Header from "@/components/Header";
 import DarkVeil from "@/components/DarkVeil";
@@ -25,18 +24,16 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const [darkVeilEnabled, setDarkVeilEnabled] = useState(true);
+  const [darkVeilEnabled, setDarkVeilEnabled] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    const saved = window.localStorage.getItem('darkVeilEnabled');
+    return saved !== null ? (JSON.parse(saved) as boolean) : true;
+  });
 
   useEffect(() => {
-    // Load saved preference
-    const saved = localStorage.getItem('darkVeilEnabled');
-    if (saved !== null) {
-      setDarkVeilEnabled(JSON.parse(saved));
-    }
-
-    // Listen for toggle events
-    const handleToggle = (event: any) => {
-      setDarkVeilEnabled(event.detail);
+    const handleToggle = (event: Event) => {
+      const custom = event as CustomEvent<boolean>;
+      setDarkVeilEnabled(!!custom.detail);
     };
 
     window.addEventListener('darkVeilToggle', handleToggle);
@@ -65,7 +62,7 @@ export default function RootLayout({
             <div className="fixed inset-0 -z-10 bg-[oklch(0.1467_0.0041_49.3141)]"></div>
           )}
           
-          {/* global site header */}
+          {/* Site header */}
           <Header />
           {children}
           </NotificationProvider>

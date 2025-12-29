@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Plus, Shuffle, X } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useNotification } from "@/contexts/NotificationContext";
 import { numberToWords } from "@/utils/numberToWords";
@@ -33,21 +33,22 @@ export default function CompetitionsPage() {
   const [playerName, setPlayerName] = useState("");
   const [players, setPlayers] = useState<string[]>([]);
   const [tournament, setTournament] = useState<Tournament | null>(null);
-  const [savedTournaments, setSavedTournaments] = useState<Tournament[]>([]);
+  const [savedTournaments, setSavedTournaments] = useState<Tournament[]>(() => {
+    if (typeof window === 'undefined') return [];
+    const saved = window.localStorage.getItem('tournaments');
+    if (!saved) return [];
+    try {
+      return JSON.parse(saved) as Tournament[];
+    } catch {
+      return [];
+    }
+  });
   const [showForm, setShowForm] = useState(false);
   const [showList, setShowList] = useState(true);
 
   const priceInWords = entryPrice && !isNaN(Number(entryPrice)) && Number(entryPrice) > 0
     ? numberToWords(Number(entryPrice), language)
     : '';
-
-  useEffect(() => {
-    // Load saved tournaments
-    const saved = localStorage.getItem('tournaments');
-    if (saved) {
-      setSavedTournaments(JSON.parse(saved));
-    }
-  }, []);
 
   const addPlayer = () => {
     if (playerName.trim() && !players.includes(playerName.trim())) {

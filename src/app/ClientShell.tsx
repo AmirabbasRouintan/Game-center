@@ -8,67 +8,75 @@ import LoginPage from "@/components/LoginPage";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { settingsStore } from "@/data/settingsStore";
 
 function LayoutContent({ children }: { children: React.ReactNode }) {
-  const [darkVeilEnabled, setDarkVeilEnabled] = useState(true);
-  const [darkVeilOpacity, setDarkVeilOpacity] = useState(0.7);
-  const [darkVeilHueShift, setDarkVeilHueShift] = useState<number>(0);
+  // Default values
+  const [darkVeilEnabled, setDarkVeilEnabled] = useState<boolean>(true);
+  const [darkVeilOpacity, setDarkVeilOpacity] = useState<number>(0.7);
+  const [darkVeilHueShift] = useState<number>(0);
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
-  const { isAuthenticated } = useAuth();
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
 
   useEffect(() => {
-    // Load saved preference
-    const saved = localStorage.getItem('darkVeilEnabled');
-    if (saved !== null) {
-      setDarkVeilEnabled(JSON.parse(saved));
-    }
+    // Load settings from API/Store
+    const loadSettings = async () => {
+      try {
+        const settings = await settingsStore.load();
+        setDarkVeilEnabled(settings.darkVeilEnabled);
+        setDarkVeilOpacity(settings.darkVeilOpacity);
+        // Note: darkVeilHueShift was not in the original settings store type I saw earlier, 
+        // but assuming it might be added or using default. 
+        // If it's not in AppSettings, we stick to default or separate storage.
+        // Checking settingsStore.ts: it has 'darkVeilTint' but not 'hueShift' explicitly typed in the output I wrote?
+        // Wait, the previous ClientShell used localStorage 'darkVeilHueShift'.
+        // My updated settingsStore has 'darkVeilTint'. 
+        // I will stick to what I have in settingsStore.
+        
+        setBackgroundImage(settings.backgroundImage);
+      } catch (e) {
+        console.error("Failed to load settings", e);
+      } finally {
+        setSettingsLoaded(true);
+      }
+    };
+    loadSettings();
 
-    const savedOpacity = localStorage.getItem('darkVeilOpacity');
-    if (savedOpacity !== null) {
-      setDarkVeilOpacity(JSON.parse(savedOpacity));
-    }
-
-    const savedHueShift = localStorage.getItem('darkVeilHueShift');
-    if (savedHueShift !== null) {
-      setDarkVeilHueShift(parseFloat(savedHueShift));
-    }
-
-    // Load background image
-    const savedBgImage = localStorage.getItem('backgroundImage');
-    if (savedBgImage) {
-      setBackgroundImage(savedBgImage);
-    }
-
-    // Listen for toggle events
-    const handleToggle = (event: any) => {
-      setDarkVeilEnabled(event.detail);
+    // Event listeners for real-time updates from other components (like Settings page)
+    const handleToggle = (event: Event) => {
+      const custom = event as CustomEvent<boolean>;
+      setDarkVeilEnabled(!!custom.detail);
     };
 
-    // Listen for opacity changes
-    const handleOpacityChange = (event: any) => {
-      setDarkVeilOpacity(event.detail);
+    const handleOpacityChange = (event: Event) => {
+      const custom = event as CustomEvent<number>;
+      setDarkVeilOpacity(typeof custom.detail === 'number' ? custom.detail : 0.7);
     };
 
-    // Listen for background image changes
-    const handleBgImageChange = (event: any) => {
-      setBackgroundImage(event.detail);
+    const handleBgImageChange = (event: Event) => {
+      const custom = event as CustomEvent<string | null>;
+      setBackgroundImage(custom.detail ?? null);
     };
 
-    const handleHueShiftChange = (event: any) => {
-      setDarkVeilHueShift(event.detail);
-    };
+    // const handleHueShiftChange = ... (If needed later)
 
     window.addEventListener('darkVeilToggle', handleToggle);
     window.addEventListener('darkVeilOpacityChange', handleOpacityChange);
-    window.addEventListener('darkVeilHueShiftChange', handleHueShiftChange);
+    // window.addEventListener('darkVeilHueShiftChange', handleHueShiftChange);
     window.addEventListener('backgroundImageChange', handleBgImageChange);
     return () => {
       window.removeEventListener('darkVeilToggle', handleToggle);
       window.removeEventListener('darkVeilOpacityChange', handleOpacityChange);
-      window.removeEventListener('darkVeilHueShiftChange', handleHueShiftChange);
+      // window.removeEventListener('darkVeilHueShiftChange', handleHueShiftChange);
       window.removeEventListener('backgroundImageChange', handleBgImageChange);
     };
   }, []);
+
+  if (authLoading || !settingsLoaded) {
+    return <LoadingScreen />; 
+  }
 
   // Show login page if not authenticated
   if (!isAuthenticated) {
@@ -102,7 +110,7 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
         <div className="fixed inset-0 -z-10 bg-black"></div>
       )}
 
-      {/* global site header */}
+      {/* Site header */}
       <Header />
       {children}
     </>

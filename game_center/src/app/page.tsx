@@ -23,9 +23,13 @@ interface GameCard {
   isRunning: boolean;
 }
 
+type GameCardWithInterval = GameCard & {
+  intervalId?: ReturnType<typeof setInterval>;
+};
+
 export default function Home() {
   const { t } = useLanguage();
-  const [cards, setCards] = useState<GameCard[]>([]);
+  const [cards, setCards] = useState<GameCardWithInterval[]>([]);
   const [hoveredCard, setHoveredCard] = useState<number | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCard, setEditingCard] = useState<number | null>(null);
@@ -72,11 +76,11 @@ export default function Home() {
               c.id === id && c.isRunning ? { ...c, time: c.time + 1 } : c
             ));
           }, 1000);
-          (card as any).intervalId = interval;
+          card.intervalId = interval;
         } else {
           // Stop timer
-          if ((card as any).intervalId) {
-            clearInterval((card as any).intervalId);
+          if (card.intervalId) {
+            clearInterval(card.intervalId);
           }
         }
         return { ...card, isRunning: !card.isRunning };

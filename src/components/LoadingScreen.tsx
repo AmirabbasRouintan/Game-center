@@ -5,19 +5,25 @@ import Image from 'next/image';
 
 export default function LoadingScreen() {
   const [isLoading, setIsLoading] = useState(true);
-  const [enabled, setEnabled] = useState(true);
-  const [durationMs, setDurationMs] = useState(2000);
+  const [enabled, setEnabled] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    const savedEnabled = window.localStorage.getItem('loadingEnabled');
+    return savedEnabled !== null ? (JSON.parse(savedEnabled) as boolean) : true;
+  });
+  const [durationMs, setDurationMs] = useState<number>(() => {
+    if (typeof window === 'undefined') return 2000;
+    const savedDuration = window.localStorage.getItem('loadingDurationMs');
+    const parsed = savedDuration !== null ? parseInt(savedDuration, 10) : NaN;
+    return Number.isFinite(parsed) ? parsed : 2000;
+  });
 
   useEffect(() => {
-    const savedEnabled = localStorage.getItem('loadingEnabled');
-    if (savedEnabled !== null) setEnabled(JSON.parse(savedEnabled));
-
-    const savedDuration = localStorage.getItem('loadingDurationMs');
-    if (savedDuration !== null && !isNaN(parseInt(savedDuration))) setDurationMs(parseInt(savedDuration));
 
     const handleEnabledChange = (event: Event) => {
       const custom = event as CustomEvent<boolean>;
-      setEnabled(!!custom.detail);
+      const nextEnabled = !!custom.detail;
+      setEnabled(nextEnabled);
+      if (nextEnabled) setIsLoading(true);
     };
 
     const handleDurationChange = (event: Event) => {
@@ -36,17 +42,14 @@ export default function LoadingScreen() {
   }, []);
 
   useEffect(() => {
-    if (!enabled) {
-      setIsLoading(false);
-      return;
-    }
+    if (!enabled) return;
 
     // duration can be 0 (close immediately)
-    const timer = setTimeout(() => {
+    const timer = window.setTimeout(() => {
       setIsLoading(false);
     }, Math.max(0, durationMs));
 
-    return () => clearTimeout(timer);
+    return () => window.clearTimeout(timer);
   }, [enabled, durationMs]);
 
   if (!enabled || !isLoading) return null;

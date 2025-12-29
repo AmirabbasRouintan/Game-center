@@ -3,21 +3,17 @@
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Download, Upload, FileSpreadsheet, Eye, EyeOff } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function SettingsPage() {
-  const { t, language } = useLanguage();
-  const [darkVeilEnabled, setDarkVeilEnabled] = useState(true);
+  const { t } = useLanguage();
+  const [darkVeilEnabled, setDarkVeilEnabled] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    const saved = window.localStorage.getItem('darkVeilEnabled');
+    return saved !== null ? (JSON.parse(saved) as boolean) : true;
+  });
   const [exportFormat, setExportFormat] = useState<'json' | 'excel'>('json');
-
-  useEffect(() => {
-    // Load saved preference
-    const saved = localStorage.getItem('darkVeilEnabled');
-    if (saved !== null) {
-      setDarkVeilEnabled(JSON.parse(saved));
-    }
-  }, []);
 
   const toggleDarkVeil = (checked: boolean) => {
     setDarkVeilEnabled(checked);
@@ -55,12 +51,12 @@ export default function SettingsPage() {
       let csv = 'Type,Name,Time,Status,Created\n';
       
       // Add game cards
-      data.gameCards.forEach((card: any) => {
+      data.gameCards.forEach((card: { title: string; time: number; isRunning: boolean; id: number | string }) => {
         csv += `Game Card,"${card.title}",${card.time},${card.isRunning ? 'Running' : 'Stopped'},${new Date(card.id).toLocaleString()}\n`;
       });
       
       // Add tournaments
-      data.tournaments.forEach((tournament: any) => {
+      data.tournaments.forEach((tournament: { name: string; players: unknown[] }) => {
         csv += `Tournament,"${tournament.name}",${tournament.players.length} players,Completed,${new Date().toLocaleString()}\n`;
       });
 
@@ -98,7 +94,7 @@ export default function SettingsPage() {
         }
         
         alert('Data imported successfully! Please refresh the page to see changes.');
-      } catch (error) {
+      } catch {
         alert('Error importing data. Please check the file format.');
       }
     };

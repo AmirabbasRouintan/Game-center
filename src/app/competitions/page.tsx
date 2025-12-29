@@ -3,12 +3,13 @@
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Plus, Shuffle, X } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useNotification } from "@/contexts/NotificationContext";
 import { numberToWords } from "@/utils/numberToWords";
 import ShinyText from "@/components/ShinyText";
 import { formatNumberLocale, convertToEnglishDigits } from "@/utils/formatNumber";
+import { competitionsStore } from "@/data/competitionsStore";
 
 interface Match {
   id: string;
@@ -38,7 +39,7 @@ export default function CompetitionsPage() {
   const [playerName, setPlayerName] = useState("");
   const [players, setPlayers] = useState<string[]>([]);
   const [tournament, setTournament] = useState<Tournament | null>(null);
-  const [savedTournaments, setSavedTournaments] = useState<Tournament[]>([]);
+  const [savedTournaments, setSavedTournaments] = useState<Tournament[]>(() => competitionsStore.loadTournaments<Tournament[]>());
   const [showForm, setShowForm] = useState(false);
   const [showList, setShowList] = useState(true);
   const [showSecondPlace, setShowSecondPlace] = useState(false);
@@ -47,14 +48,6 @@ export default function CompetitionsPage() {
   const priceInWords = entryPrice && !isNaN(Number(entryPrice)) && Number(entryPrice) > 0
     ? numberToWords(Number(entryPrice), language)
     : '';
-
-  useEffect(() => {
-    // Load saved tournaments
-    const saved = localStorage.getItem('tournaments');
-    if (saved) {
-      setSavedTournaments(JSON.parse(saved));
-    }
-  }, []);
 
   const addPlayer = () => {
     if (playerName.trim() && !players.includes(playerName.trim())) {
@@ -73,7 +66,7 @@ export default function CompetitionsPage() {
   };
 
   const saveTournaments = (tournaments: Tournament[]) => {
-    localStorage.setItem('tournaments', JSON.stringify(tournaments));
+    competitionsStore.saveTournaments(tournaments);
     setSavedTournaments(tournaments);
     // Also save to ensure data persistence
     saveTournamentsToJson(tournaments);
@@ -81,7 +74,7 @@ export default function CompetitionsPage() {
 
   const saveTournamentsToJson = (tournamentsData: Tournament[]) => {
     // Save to localStorage for export feature
-    localStorage.setItem('tournaments', JSON.stringify(tournamentsData));
+    competitionsStore.saveTournaments(tournamentsData);
   };
 
   const createTournament = () => {

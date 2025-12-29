@@ -1,6 +1,6 @@
 // Utility functions for saving data to JSON files
 
-export const saveToJsonFile = (data: any, filename: string) => {
+export const saveToJsonFile = <T,>(data: T, filename: string) => {
   const jsonString = JSON.stringify(data, null, 2);
   const blob = new Blob([jsonString], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -13,12 +13,12 @@ export const saveToJsonFile = (data: any, filename: string) => {
   URL.revokeObjectURL(url);
 };
 
-export const saveGameCardsToJson = (gameCards: any[]) => {
+export const saveGameCardsToJson = (gameCards: unknown[]) => {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   saveToJsonFile(gameCards, `game-cards-${timestamp}.json`);
 };
 
-export const saveTournamentsToJson = (tournaments: any[]) => {
+export const saveTournamentsToJson = (tournaments: unknown[]) => {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   saveToJsonFile(tournaments, `tournaments-${timestamp}.json`);
 };

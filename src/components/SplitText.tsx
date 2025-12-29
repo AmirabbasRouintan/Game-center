@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useRef, useEffect, useState } from 'react';
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -43,12 +45,14 @@ const SplitText: React.FC<SplitTextProps> = ({
 
   useEffect(() => {
     if (document.fonts.status === 'loaded') {
-      setFontsLoaded(true);
-    } else {
-      document.fonts.ready.then(() => {
-        setFontsLoaded(true);
-      });
+      // avoid setState synchronously within effect
+      Promise.resolve().then(() => setFontsLoaded(true));
+      return;
     }
+
+    document.fonts.ready.then(() => {
+      setFontsLoaded(true);
+    });
   }, []);
 
   useGSAP(
@@ -61,7 +65,9 @@ const SplitText: React.FC<SplitTextProps> = ({
       if (el._rbsplitInstance) {
         try {
           el._rbsplitInstance.revert();
-        } catch (_) {}
+        } catch {
+          // ignore
+        }
         el._rbsplitInstance = undefined;
       }
 
@@ -126,7 +132,9 @@ const SplitText: React.FC<SplitTextProps> = ({
         });
         try {
           splitInstance.revert();
-        } catch (_) {}
+        } catch {
+          // ignore
+        }
         el._rbsplitInstance = undefined;
       };
     },

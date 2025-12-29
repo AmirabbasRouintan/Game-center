@@ -13,20 +13,27 @@ export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     
     if (!username || !password) {
-      setError(isFirstTime ? t('login.fillBoth') : t('login.fillBoth'));
+      setError(t('login.fillBoth') || 'Please fill both fields');
       return;
     }
     
-    const success = login(username, password);
-    
-    if (!success) {
-      setError(t('login.invalidCredentials'));
+    setIsLoggingIn(true);
+    try {
+      const success = await login(username, password);
+      if (!success) {
+        setError(t('login.invalidCredentials') || 'Invalid credentials');
+      }
+    } catch {
+      setError('An error occurred');
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -71,6 +78,7 @@ export default function LoginPage() {
                   onChange={(e) => setUsername(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 rounded-lg bg-white/10 dark:bg-black/20 border border-white/20 backdrop-blur-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-primary transition-all duration-300"
                   placeholder={t('login.usernamePlaceholder')}
+                  disabled={isLoggingIn}
                 />
               </div>
             </div>
@@ -88,6 +96,7 @@ export default function LoginPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 rounded-lg bg-white/10 dark:bg-black/20 border border-white/20 backdrop-blur-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-primary transition-all duration-300"
                   placeholder={t('login.passwordPlaceholder')}
+                  disabled={isLoggingIn}
                 />
               </div>
             </div>
@@ -104,8 +113,12 @@ export default function LoginPage() {
               type="submit"
               className="w-full py-3 text-base font-semibold transition-all duration-300 hover:scale-105"
               size="lg"
+              disabled={isLoggingIn}
             >
-              {isFirstTime ? t('login.createAccount') : t('login.signIn')}
+              {isLoggingIn 
+                ? (t('common.loading') || 'Loading...') 
+                : (isFirstTime ? t('login.createAccount') : t('login.signIn'))
+              }
             </Button>
           </form>
 

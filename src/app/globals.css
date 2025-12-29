@@ -1,6 +1,18 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* Stable paused button alternating wink */
+@keyframes rovoWinkA {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+@keyframes rovoWinkB {
+  0%, 49% { opacity: 0; }
+  50%, 100% { opacity: 1; }
+}
+.rovo-wink-a { animation: rovoWinkA 1.6s ease-in-out infinite; }
+.rovo-wink-b { animation: rovoWinkB 1.6s ease-in-out infinite; }
+
 @custom-variant dark (&:is(.dark *));
 
 
