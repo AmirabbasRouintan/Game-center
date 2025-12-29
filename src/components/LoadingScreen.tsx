@@ -5,41 +5,9 @@ import Image from 'next/image';
 
 export default function LoadingScreen() {
   const [isLoading, setIsLoading] = useState(true);
-  const [enabled, setEnabled] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return true;
-    const savedEnabled = window.localStorage.getItem('loadingEnabled');
-    return savedEnabled !== null ? (JSON.parse(savedEnabled) as boolean) : true;
-  });
-  const [durationMs, setDurationMs] = useState<number>(() => {
-    if (typeof window === 'undefined') return 2000;
-    const savedDuration = window.localStorage.getItem('loadingDurationMs');
-    const parsed = savedDuration !== null ? parseInt(savedDuration, 10) : NaN;
-    return Number.isFinite(parsed) ? parsed : 2000;
-  });
 
-  useEffect(() => {
 
-    const handleEnabledChange = (event: Event) => {
-      const custom = event as CustomEvent<boolean>;
-      const nextEnabled = !!custom.detail;
-      setEnabled(nextEnabled);
-      if (nextEnabled) setIsLoading(true);
-    };
 
-    const handleDurationChange = (event: Event) => {
-      const custom = event as CustomEvent<number>;
-      const next = typeof custom.detail === 'number' ? custom.detail : 0;
-      setDurationMs(next);
-    };
-
-    window.addEventListener('loadingEnabledChange', handleEnabledChange);
-    window.addEventListener('loadingDurationChange', handleDurationChange);
-
-    return () => {
-      window.removeEventListener('loadingEnabledChange', handleEnabledChange);
-      window.removeEventListener('loadingDurationChange', handleDurationChange);
-    };
-  }, []);
 
   useEffect(() => {
     if (!enabled) return;

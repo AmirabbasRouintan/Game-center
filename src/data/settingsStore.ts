@@ -5,8 +5,7 @@ export type AppSettings = {
   darkVeilOpacity: number;
   darkVeilTint: string;
   costPerHour: string;
-  loadingEnabled: boolean;
-  loadingDurationMs: number;
+
   gameCenterName: string;
   backgroundImage: string | null;
   adminUsername: string;
@@ -24,8 +23,7 @@ const defaultSettings: AppSettings = {
   darkVeilOpacity: 0.5,
   darkVeilTint: '#ffffff',
   costPerHour: '',
-  loadingEnabled: true,
-  loadingDurationMs: 2000,
+
   gameCenterName: '',
   backgroundImage: null,
   adminUsername: '',

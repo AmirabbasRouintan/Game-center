@@ -34,8 +34,7 @@ export default function SettingsPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [adminPasswordHash, setAdminPasswordHash] = useState(''); // Store hash to verify current password locally if needed
 
-  const [loadingEnabled, setLoadingEnabled] = useState<boolean>(true);
-  const [loadingDurationMs, setLoadingDurationMs] = useState<number>(2000);
+
 
   // Home page UI
   const [homeShowTopTabs, setHomeShowTopTabs] = useState<boolean>(true);
@@ -50,8 +49,7 @@ export default function SettingsPage() {
       setCostPerHour(s.costPerHour);
       setGameCenterName(s.gameCenterName);
       setBackgroundImage(s.backgroundImage);
-      setLoadingEnabled(s.loadingEnabled);
-      setLoadingDurationMs(s.loadingDurationMs);
+
       setHomeShowTopTabs(s.homeShowTopTabs);
       setHomeDefaultTab(s.homeDefaultTab);
       setAdminPasswordHash(s.adminPassword);
@@ -153,14 +151,8 @@ export default function SettingsPage() {
             setCostPerHour(String(s.costPerHour));
             patch.costPerHour = String(s.costPerHour);
           }
-          if (s.loadingEnabled !== undefined) {
-            setLoadingEnabled(!!s.loadingEnabled);
-            patch.loadingEnabled = !!s.loadingEnabled;
-          }
-          if (s.loadingDurationMs !== undefined) {
-            setLoadingDurationMs(Number(s.loadingDurationMs));
-            patch.loadingDurationMs = Number(s.loadingDurationMs);
-          }
+
+
           if (s.gameCenterName !== undefined) {
             setGameCenterName(String(s.gameCenterName));
             patch.gameCenterName = String(s.gameCenterName);
@@ -285,12 +277,7 @@ export default function SettingsPage() {
   };
   const costInWords = costPerHour && !isNaN(Number(costPerHour)) && Number(costPerHour) > 0 ? numberToWords(Number(costPerHour), language) : '';
 
-  const saveLoadingSettings = (nextEnabled: boolean, nextDurationMs: number) => {
-    settingsStore.savePartial({ loadingEnabled: nextEnabled, loadingDurationMs: nextDurationMs });
 
-    window.dispatchEvent(new CustomEvent('loadingEnabledChange', { detail: nextEnabled }));
-    window.dispatchEvent(new CustomEvent('loadingDurationChange', { detail: nextDurationMs }));
-  };
   return <main className="min-h-screen py-10 animate-in fade-in duration-500 pt-24">
       <div className="mx-auto w-[80%]">
         <h1 className="text-3xl font-bold text-white animate-in fade-in slide-in-from-bottom-4 duration-700">{t('settings.title')}</h1>
@@ -364,54 +351,7 @@ export default function SettingsPage() {
             </div>
           </section>
 
-          <section className="bg-white/10 dark:bg-white/5 backdrop-blur-lg rounded-lg border border-white/20 p-6 shadow-lg transition-all duration-300 hover:shadow-xl hover:border-white/30 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-200">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <h2 className="text-xl font-semibold text-white">{language === 'fa' ? 'لودینگ' : 'Loading'}</h2>
 
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-white/80">{language === 'fa' ? 'نمایش' : 'Show'}</span>
-                  <Switch
-                    checked={loadingEnabled}
-                    onCheckedChange={(checked) => {
-                      setLoadingEnabled(checked);
-                      saveLoadingSettings(checked, loadingDurationMs);
-                    }}
-                  />
-                </div>
-              </div>
-
-              <p className="text-sm text-zinc-400 mt-1">
-                {language === 'fa' ? 'کنترل نمایش لودینگ و زمان آن' : 'Control loading screen visibility and duration'}
-              </p>
-            </div>
-
-            <div className="mt-4 space-y-4">
-              <div className={`p-4 bg-white/5 rounded-lg border border-white/10 transition-all ${loadingEnabled ? 'opacity-100' : 'opacity-50 pointer-events-none'}`}>
-                <div className="flex justify-between items-center mb-4">
-                  <span className="text-sm text-zinc-300">{language === 'fa' ? 'زمان لودینگ' : 'Loading duration'}</span>
-                  <span className="text-sm font-mono text-primary">{Math.round(loadingDurationMs / 100) / 10}s</span>
-                </div>
-                <Slider
-                  defaultValue={[loadingDurationMs]}
-                  min={0}
-                  max={8000}
-                  step={250}
-                  onValueChange={(value) => {
-                    const next = value[0] ?? 0;
-                    setLoadingDurationMs(next);
-                    saveLoadingSettings(loadingEnabled, next);
-                  }}
-                  className="w-full"
-                />
-                <p className="mt-2 text-xs text-zinc-400">
-                  {language === 'fa'
-                    ? 'اگر 0 باشد، لودینگ سریع بسته می‌شود.'
-                    : 'If set to 0, loading will close immediately.'}
-                </p>
-              </div>
-            </div>
-          </section>
 
           <section className="bg-white/10 dark:bg-white/5 backdrop-blur-lg rounded-lg border border-white/20 p-6 shadow-lg transition-all duration-300 hover:shadow-xl hover:border-white/30 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-200 lg:col-span-2">
             <h2 className="text-xl font-semibold text-white">{t('settings.display')}</h2>
