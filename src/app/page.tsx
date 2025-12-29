@@ -144,12 +144,11 @@ export default function Home() {
   }, [clients]);
 
   const generateClientCode = () => {
-    const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    let result = '';
-    for (let i = 0; i < 2; i++) {
-        result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return result;
+    const digits = '0123456789';
+    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const digit = digits.charAt(Math.floor(Math.random() * digits.length));
+    const letter = letters.charAt(Math.floor(Math.random() * letters.length));
+    return Math.random() > 0.5 ? digit + letter : letter + digit;
   };
 
   const handleAddNewClient = () => {
