@@ -1,7 +1,7 @@
 'use client';
 
 import { Button } from "@/components/ui/button";
-import { Plus, X, Play, Pause, RotateCcw, Pencil, Trash2 } from "lucide-react";
+import { Plus, X, Play, Pause, RotateCcw, Pencil, Trash2, Search, Copy } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { Switch } from "@/components/ui/switch";
 import { Calendar } from "@/components/ui/calendar";
@@ -37,12 +37,31 @@ type PlayHistoryItem = {
   remainingAmount: number;
   createdAt: string;
 };
+
+interface Client {
+  id: string;
+  firstName: string;
+  lastName: string;
+  phoneNumber?: string;
+  code: string;
+  createdAt: string;
+}
+
 export default function Home() {
   const {
     t,
     language
   } = useLanguage();
   const [cards, setCards] = useState<GameCard[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [addClientDialogOpen, setAddClientDialogOpen] = useState(false);
+  const [showCodeDialogOpen, setShowCodeDialogOpen] = useState(false);
+  const [newClientData, setNewClientData] = useState({ firstName: '', lastName: '', phoneNumber: '' });
+  const [generatedCode, setGeneratedCode] = useState('');
+  const [searchCode, setSearchCode] = useState('');
+  const [filteredCards, setFilteredCards] = useState<GameCard[] | null>(null);
+  const [lastAddedCardId, setLastAddedCardId] = useState<number | null>(null);
+
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCard, setEditingCard] = useState<number | null>(null);
   const [titleInput, setTitleInput] = useState("");
@@ -102,6 +121,14 @@ export default function Home() {
         setHistory([]);
       }
     }
+    const savedClients = localStorage.getItem('gameClients');
+    if (savedClients) {
+      try {
+        setClients(JSON.parse(savedClients));
+      } catch {
+        setClients([]);
+      }
+    }
     return () => {
       window.removeEventListener('gameCenterNameChange', handleNameChange);
     };
@@ -112,6 +139,80 @@ export default function Home() {
   useEffect(() => {
     localStorage.setItem('playHistory', JSON.stringify(history));
   }, [history]);
+  useEffect(() => {
+    localStorage.setItem('gameClients', JSON.stringify(clients));
+  }, [clients]);
+
+  const generateClientCode = () => {
+    const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    let result = '';
+    for (let i = 0; i < 2; i++) {
+        result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+  };
+
+  const handleAddNewClient = () => {
+    const code = generateClientCode();
+    setGeneratedCode(code);
+    
+    const newClient: Client = {
+        id: Date.now().toString(),
+        firstName: newClientData.firstName,
+        lastName: newClientData.lastName,
+        phoneNumber: newClientData.phoneNumber,
+        code: code,
+        createdAt: new Date().toISOString()
+    };
+    
+    setClients(prev => [...prev, newClient]);
+    setAddClientDialogOpen(false);
+    setShowCodeDialogOpen(true);
+    
+    // Also create a card for them
+    const newCard: GameCard = {
+      id: Date.now(),
+      title: `${newClient.firstName} ${newClient.lastName}`,
+      time: 0,
+      isRunning: false,
+      date: new Date().toISOString()
+    };
+    setCards(prev => [...prev, newCard]);
+    setLastAddedCardId(newCard.id); // Store the ID of the newly created card
+    
+    // Reset form
+    setNewClientData({ firstName: '', lastName: '', phoneNumber: '' });
+  };
+
+  const handleSaveAndStartSession = () => {
+    setShowCodeDialogOpen(false);
+    if (lastAddedCardId) {
+        toggleTimer(lastAddedCardId);
+        setLastAddedCardId(null);
+    }
+  };
+
+  // Live search effect
+  useEffect(() => {
+    const query = searchCode.trim();
+    if (!query) {
+      setFilteredCards(null);
+      return;
+    }
+
+    const matchingClients = clients.filter(c => 
+      c.code.toLowerCase().includes(query.toLowerCase())
+    );
+
+    if (matchingClients.length > 0) {
+      const clientNames = matchingClients.map(c => `${c.firstName} ${c.lastName}`);
+      const matchingCards = cards.filter(c => clientNames.includes(c.title));
+      setFilteredCards(matchingCards);
+    } else {
+      setFilteredCards([]);
+    }
+  }, [searchCode, clients, cards]);
+
 
   // Auto-fill "Paid amount" with the calculated cost when stop dialog opens.
   // If user edits the field manually, we don't overwrite it.
@@ -123,7 +224,15 @@ export default function Home() {
 
     stopDialogDefaultPaidRef.current = defaultPaid;
     setPaidAmount(prev => (prev && prev.trim().length > 0 ? prev : defaultPaid));
-  }, [stopDialogOpen, stoppedCardDraft]);
+
+    // Auto-fill client details if card title matches a client
+    const foundClient = clients.find(c => `${c.firstName} ${c.lastName}` === stoppedCardDraft.cardTitle);
+    if (foundClient) {
+        setFirstName(foundClient.firstName);
+        setLastName(foundClient.lastName);
+        setPhoneNumber(foundClient.phoneNumber || '');
+    }
+  }, [stopDialogOpen, stoppedCardDraft, clients]);
   const resetStopDialogForm = () => {
     setFirstName('');
     setLastName('');
@@ -340,7 +449,7 @@ export default function Home() {
       <div className="mx-auto w-[80%]">
         {}
         <div className="fixed top-28 right-[10%] z-40 rtl:right-auto rtl:left-[10%] animate-in fade-in slide-in-from-top-4 duration-700 delay-300">
-        <Button onClick={addCard} size="lg" className="rounded-full shadow-lg hover:shadow-xl transition-all">
+        <Button onClick={() => setAddClientDialogOpen(true)} size="lg" className="rounded-full shadow-lg hover:shadow-xl transition-all">
           <Plus className="w-5 h-5 mr-2 rtl:mr-0 rtl:ml-2" />
           {t('home.addNewCard')}
         </Button>
@@ -348,8 +457,34 @@ export default function Home() {
 
         {}
         <div className="flex min-h-screen flex-col items-center justify-center py-16 gap-8">
+          
+          {/* Search Box */}
+          <div className="w-full max-w-md flex items-center gap-2">
+            <input
+              type="text"
+              value={searchCode}
+              onChange={(e) => setSearchCode(e.target.value)}
+              placeholder={t('home.searchPlaceholder')}
+              className="flex-1 px-4 py-2 rounded-lg bg-white/10 dark:bg-white/5 border border-white/20 backdrop-blur-lg text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+            <Button onClick={() => setSearchCode('')} className="whitespace-nowrap" variant={searchCode ? "destructive" : "default"}>
+              {searchCode ? <X className="w-4 h-4 mr-2 rtl:mr-0 rtl:ml-2" /> : <Search className="w-4 h-4 mr-2 rtl:mr-0 rtl:ml-2" />}
+              {searchCode ? t('home.cancel') : t('home.search')}
+            </Button>
+          </div>
+
           <div className="flex flex-wrap gap-4 items-center justify-center">
-        {cards.map(card => <div key={card.id} className="relative w-80 h-60 bg-white/10 dark:bg-white/5 backdrop-blur-lg rounded-lg border border-white/20 p-6 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 cursor-pointer group animate-in fade-in zoom-in-95 duration-500" onDoubleClick={() => handleDoubleClick(card)}>
+        {(filteredCards ?? cards).map(card => {
+            const client = clients.find(c => `${c.firstName} ${c.lastName}` === card.title);
+            return (
+        <div key={card.id} className="relative w-80 h-60 bg-white/10 dark:bg-white/5 backdrop-blur-lg rounded-lg border border-white/20 p-6 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 cursor-pointer group animate-in fade-in zoom-in-95 duration-500" onDoubleClick={() => handleDoubleClick(card)}>
+            {/* Client Code Display */}
+            {client && (
+              <div className="absolute top-2 left-2 bg-black/40 backdrop-blur-md px-2 py-0.5 rounded text-[10px] text-white/60 font-mono tracking-widest border border-white/5 z-20">
+                {client.code}
+              </div>
+            )}
+
             {}
             <button onClick={e => {
               e.stopPropagation();
@@ -404,7 +539,9 @@ export default function Home() {
                 </div>
               </div>
             </div>
-          </div>)}
+          </div>
+         );
+        })}
         
         {cards.length === 0 && <div className="text-center animate-in fade-in slide-in-from-bottom-8 duration-700">
             <h1 className="text-7xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-pink-600 sm:text-8xl md:text-9xl">
@@ -1004,6 +1141,78 @@ export default function Home() {
             </AlertDialogCancel>
             <AlertDialogAction onClick={handleSaveTitle}>
               {t('home.save')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={addClientDialogOpen} onOpenChange={setAddClientDialogOpen}>
+        <AlertDialogContent className="bg-white/10 dark:bg-black/20 backdrop-blur-xl border-white/20">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-white">{t('home.addNewCard')}</AlertDialogTitle>
+            <AlertDialogDescription className="text-zinc-300">
+               {language === 'fa' ? 'اطلاعات مشتری را وارد کنید.' : 'Enter client details.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="grid gap-4 py-4">
+            <input
+              type="text"
+              value={newClientData.firstName}
+              onChange={(e) => setNewClientData({ ...newClientData, firstName: e.target.value })}
+              placeholder={t('client.firstName')}
+              className="w-full px-4 py-2 rounded-lg bg-white/10 dark:bg-black/20 border border-white/20 backdrop-blur-lg text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+            <input
+              type="text"
+              value={newClientData.lastName}
+              onChange={(e) => setNewClientData({ ...newClientData, lastName: e.target.value })}
+              placeholder={t('client.lastName')}
+              className="w-full px-4 py-2 rounded-lg bg-white/10 dark:bg-black/20 border border-white/20 backdrop-blur-lg text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+             <input
+              type="tel"
+              value={newClientData.phoneNumber}
+              onChange={(e) => setNewClientData({ ...newClientData, phoneNumber: e.target.value })}
+              placeholder={t('client.phone')}
+              className="w-full px-4 py-2 rounded-lg bg-white/10 dark:bg-black/20 border border-white/20 backdrop-blur-lg text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setAddClientDialogOpen(false)}>{t('home.cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleAddNewClient} disabled={!newClientData.firstName && !newClientData.lastName}>
+              {t('client.generateCode')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showCodeDialogOpen} onOpenChange={setShowCodeDialogOpen}>
+        <AlertDialogContent className="bg-white/10 dark:bg-black/20 backdrop-blur-xl border-white/20">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-white">{t('client.code')}</AlertDialogTitle>
+            <AlertDialogDescription className="text-zinc-300">
+              {t('client.codeInstructions')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="flex flex-col items-center justify-center py-6 gap-4">
+            <div className="text-5xl font-mono font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-600 tracking-wider">
+              {generatedCode}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-black border-white/20 hover:bg-white/10"
+              onClick={() => {
+                navigator.clipboard.writeText(generatedCode);
+              }}
+            >
+              <Copy className="w-4 h-4 mr-2 rtl:mr-0 rtl:ml-2" />
+              {language === 'fa' ? 'کپی کد' : 'Copy Code'}
+            </Button>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={handleSaveAndStartSession}>
+              {t('client.saveAndStart')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
