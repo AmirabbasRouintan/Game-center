@@ -205,7 +205,7 @@ export default function Home() {
     const first = stableClientData.firstName.trim();
     const last = stableClientData.lastName.trim();
     const phone = stableClientData.phoneNumber.trim();
-    if (!first || !last) return;
+    if (!first && !last) return;
     const code = generateClientCode();
     const newClient: Client = {
       id: Date.now().toString(),
@@ -218,7 +218,7 @@ export default function Home() {
     setClients(prev => [...prev, newClient]);
     const newCard: GameCard = {
       id: Date.now() + 1,
-      title: `${newClient.firstName} ${newClient.lastName}`,
+      title: `${newClient.firstName} ${newClient.lastName}`.trim(),
       time: 0,
       isRunning: false,
       date: new Date().toISOString()
@@ -1647,7 +1647,7 @@ export default function Home() {
           }}>
               {t('home.cancel')}
             </AlertDialogCancel>
-            <AlertDialogAction onClick={handleAddStableClient} disabled={!stableClientData.firstName.trim() || !stableClientData.lastName.trim()}>
+            <AlertDialogAction onClick={handleAddStableClient} disabled={!stableClientData.firstName.trim() && !stableClientData.lastName.trim()}>
               {language === 'fa' ? 'ثبت' : 'Save'}
             </AlertDialogAction>
           </AlertDialogFooter>
