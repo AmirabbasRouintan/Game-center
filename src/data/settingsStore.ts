@@ -28,7 +28,7 @@ const defaultSettings: AppSettings = {
   backgroundImage: null,
   adminUsername: '',
   adminPassword: '',
-  homeShowTopTabs: true,
+  homeShowTopTabs: false,
   homeDefaultTab: 'stable',
 };
 
