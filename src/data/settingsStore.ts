@@ -8,6 +8,9 @@ export type AppSettings = {
 
   gameCenterName: string;
   backgroundImage: string | null;
+
+  // Auth
+  authEnabled: boolean;
   adminUsername: string;
   adminPassword: string;
 
@@ -26,8 +29,12 @@ const defaultSettings: AppSettings = {
 
   gameCenterName: '',
   backgroundImage: null,
+
+  // Auth is OFF by default
+  authEnabled: false,
   adminUsername: '',
   adminPassword: '',
+
   homeShowTopTabs: false,
   homeDefaultTab: 'stable',
 };

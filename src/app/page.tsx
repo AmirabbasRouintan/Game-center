@@ -840,6 +840,10 @@ export default function Home() {
               costPerHour={costPerHour}
               history={history}
               onAddHistory={(item) => setHistory((prev) => [item, ...prev])}
+              onUpdateHistory={(item) =>
+                setHistory((prev) => prev.map((h) => (h.id === item.id ? item : h)))
+              }
+              onDeleteHistory={(id) => setHistory((prev) => prev.filter((h) => h.id !== id))}
             />
           ) : <div className="flex min-h-screen flex-col items-center justify-start py-16 gap-8">
             <div className="w-full max-w-6xl flex justify-end">

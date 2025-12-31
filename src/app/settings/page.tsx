@@ -34,6 +34,8 @@ export default function SettingsPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [adminPasswordHash, setAdminPasswordHash] = useState(''); // Store hash to verify current password locally if needed
 
+  const [authEnabled, setAuthEnabled] = useState<boolean>(false);
+
 
 
   // Home page UI
@@ -53,6 +55,7 @@ export default function SettingsPage() {
       setHomeShowTopTabs(s.homeShowTopTabs);
       setHomeDefaultTab(s.homeDefaultTab);
       setAdminPasswordHash(s.adminPassword);
+      setAuthEnabled(!!s.authEnabled);
     };
     load();
   }, []);
@@ -454,6 +457,24 @@ export default function SettingsPage() {
 
               {}
               <div>
+                <div className="mb-4 flex items-center justify-between rounded-lg border border-white/10 bg-white/5 p-3">
+                  <div>
+                    <div className="text-sm font-medium text-white">
+                      {language === 'fa' ? 'فعال‌سازی ورود' : 'Enable login'}
+                    </div>
+                    <div className="text-xs text-white/60">
+                      {language === 'fa' ? 'اگر خاموش باشد، برنامه بدون لاگین باز می‌شود.' : 'If off, the app opens without login.'}
+                    </div>
+                  </div>
+                  <Switch
+                    checked={authEnabled}
+                    onCheckedChange={(v) => {
+                      setAuthEnabled(!!v);
+                      settingsStore.savePartial({ authEnabled: !!v });
+                    }}
+                  />
+                </div>
+
                 <label className="block text-sm font-medium text-white mb-2">
                   {t('settings.changeCredentials')}
                 </label>

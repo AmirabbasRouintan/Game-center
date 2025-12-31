@@ -17,6 +17,7 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
   const [darkVeilHueShift] = useState<number>(0);
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [authEnabled, setAuthEnabled] = useState<boolean>(false);
   
   const { isAuthenticated, isLoading: authLoading } = useAuth();
 
@@ -36,6 +37,7 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
         // I will stick to what I have in settingsStore.
         
         setBackgroundImage(settings.backgroundImage);
+        setAuthEnabled(!!settings.authEnabled);
       } catch (e) {
         console.error("Failed to load settings", e);
       } finally {
@@ -78,8 +80,8 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
     return <LoadingScreen />; 
   }
 
-  // Show login page if not authenticated
-  if (!isAuthenticated) {
+  // Show login page only if auth is enabled
+  if (authEnabled && !isAuthenticated) {
     return <LoginPage />;
   }
 

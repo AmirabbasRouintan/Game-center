@@ -23,6 +23,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const init = async () => {
       try {
+        const settings = await settingsStore.load();
+
+        // If auth is disabled in settings, consider user authenticated.
+        if (!settings.authEnabled) {
+          setIsAuthenticated(true);
+          setIsFirstTime(false);
+          return;
+        }
+
         // Check session (client-side only)
         const sessionToken = typeof window !== 'undefined' ? window.sessionStorage.getItem('authToken') : null;
         if (sessionToken === 'authenticated') {
@@ -30,7 +39,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         // Check if admin is set up
-        const settings = await settingsStore.load();
         const hasUser = !!settings.adminUsername;
         const hasPass = !!settings.adminPassword;
         setIsFirstTime(!hasUser || !hasPass);
@@ -46,6 +54,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async (username: string, password: string): Promise<boolean> => {
     try {
       const settings = await settingsStore.load();
+      if (!settings.authEnabled) {
+        // auth disabled => always allow
+        sessionStorage.setItem('authToken', 'authenticated');
+        setIsAuthenticated(true);
+        return true;
+      }
       const savedUsername = settings.adminUsername;
       const savedPasswordHash = settings.adminPassword;
 

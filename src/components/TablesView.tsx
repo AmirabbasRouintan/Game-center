@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PlayHistoryItem } from '@/data/timerStore';
-import { Play, Pause, Search, X, Filter } from 'lucide-react';
+import { Play, Pause, Search, X, Filter, Pencil, Trash2 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import {
@@ -33,6 +33,7 @@ type TableSession = {
   sessionCode: string | null;
   startedAt: string | null;
   customerFullName: string;
+  customerClientId: string | null;
 };
 
 type StopDraft = {
@@ -51,12 +52,16 @@ export default function TablesView({
   costPerHour,
   history,
   onAddHistory,
+  onUpdateHistory,
+  onDeleteHistory,
 }: {
   language: 'fa' | 'en';
   clients: TablesViewClient[];
   costPerHour: number;
   history: PlayHistoryItem[];
   onAddHistory: (item: PlayHistoryItem) => void;
+  onUpdateHistory: (item: PlayHistoryItem) => void;
+  onDeleteHistory: (id: string) => void;
 }) {
   const [sessions, setSessions] = useState<Record<TableKind, TableSession>>({
     snooker: {
@@ -66,6 +71,7 @@ export default function TablesView({
       sessionCode: null,
       startedAt: null,
       customerFullName: '',
+      customerClientId: null,
     },
     eightBall: {
       kind: 'eightBall',
@@ -74,6 +80,7 @@ export default function TablesView({
       sessionCode: null,
       startedAt: null,
       customerFullName: '',
+      customerClientId: null,
     },
   });
 
@@ -86,7 +93,7 @@ export default function TablesView({
   const [stopDraft, setStopDraft] = useState<StopDraft | null>(null);
 
   // Ask customer info timing
-  const [askCustomerOnStart, setAskCustomerOnStart] = useState(false);
+  const [askCustomerOnStart, setAskCustomerOnStart] = useState(true);
 
   const [startDialogOpen, setStartDialogOpen] = useState(false);
   const [startDraft, setStartDraft] = useState<{ kind: TableKind; sessionCode: string; startedAt: string } | null>(
@@ -101,9 +108,16 @@ export default function TablesView({
 
   // Table checkout customer info
   const [customerFullName, setCustomerFullName] = useState('');
+  const [customerCodeInput, setCustomerCodeInput] = useState('');
+  const [showManualCodeInput, setShowManualCodeInput] = useState(false);
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [paidFullyChecked, setPaidFullyChecked] = useState(true);
   const [paidAmountInput, setPaidAmountInput] = useState('');
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+
+  // History edit/delete
+  const [historyEditOpen, setHistoryEditOpen] = useState(false);
+  const [historyEditDraft, setHistoryEditDraft] = useState<PlayHistoryItem | null>(null);
 
   const copyToClipboard = async (value?: string | null) => {
     const v = (value || '').trim();
@@ -189,6 +203,29 @@ export default function TablesView({
     );
   }, [clients, customerFullName]);
 
+  const activeTableClientIds = useMemo(() => {
+    const ids = new Set<string>();
+    (Object.keys(sessions) as TableKind[]).forEach((k) => {
+      const s = sessions[k];
+      if (!s.running) return;
+
+      // Prefer explicit client id
+      if (s.customerClientId) {
+        ids.add(s.customerClientId);
+        return;
+      }
+
+      // Fallback: match by name if user started without selecting a client
+      const full = (s.customerFullName || '').trim().toLowerCase();
+      if (!full) return;
+      const match = clients.find(
+        (c) => `${c.firstName || ''} ${c.lastName || ''}`.trim().toLowerCase() === full,
+      );
+      if (match?.id) ids.add(match.id);
+    });
+    return ids;
+  }, [sessions, clients]);
+
   const filteredClients = useMemo(() => {
     const q = tableSearchQuery.trim().toLowerCase();
     if (!q) return [] as TablesViewClient[];
@@ -206,13 +243,19 @@ export default function TablesView({
 
         if (!byCode && !byName) {
           // fallback: behave like code search
-          return code.includes(q);
+          return code.includes(q) || name.includes(q);
         }
 
         return matchesCode || matchesName;
       })
+      .sort((a, b) => {
+        const ar = activeTableClientIds.has(a.id) ? 1 : 0;
+        const br = activeTableClientIds.has(b.id) ? 1 : 0;
+        if (ar !== br) return br - ar;
+        return String(a.code || '').localeCompare(String(b.code || ''));
+      })
       .slice(0, 8);
-  }, [clients, tableSearchQuery, tableFilterByCode, tableFilterByName]);
+  }, [clients, tableSearchQuery, tableFilterByCode, tableFilterByName, activeTableClientIds]);
 
   useEffect(() => {
     // eslint wants us to snapshot refs inside the effect
@@ -302,6 +345,7 @@ export default function TablesView({
           running: true,
           sessionCode,
           startedAt,
+          customerClientId: selectedClientId,
         },
       };
     });
@@ -346,6 +390,9 @@ export default function TablesView({
     // Prefill name if we already have one (from start popup or from search)
     if (askCustomerOnStart) {
       setCustomerFullName(current.customerFullName || '');
+      setCustomerCodeInput('');
+      setShowManualCodeInput(false);
+      setSelectedClientId(current.customerClientId || null);
     } else {
       setCustomerFullName((prev) => prev || current.customerFullName || '');
     }
@@ -366,7 +413,15 @@ export default function TablesView({
     }
     setSessions((prev) => ({
       ...prev,
-      [kind]: { kind, running: false, elapsedSeconds: 0, sessionCode: null, startedAt: null, customerFullName: '' },
+      [kind]: {
+        kind,
+        running: false,
+        elapsedSeconds: 0,
+        sessionCode: null,
+        startedAt: null,
+        customerFullName: '',
+        customerClientId: null,
+      },
     }));
   };
 
@@ -383,6 +438,25 @@ export default function TablesView({
     return '-';
   };
 
+  const openHistoryEdit = (item: PlayHistoryItem) => {
+    setHistoryEditDraft({ ...item });
+    setHistoryEditOpen(true);
+  };
+
+  const handleSaveHistoryEdit = () => {
+    if (!historyEditDraft) return;
+    onUpdateHistory(historyEditDraft);
+    setHistoryEditOpen(false);
+    setHistoryEditDraft(null);
+  };
+
+  const handleDeleteHistory = () => {
+    if (!historyEditDraft) return;
+    onDeleteHistory(historyEditDraft.id);
+    setHistoryEditOpen(false);
+    setHistoryEditDraft(null);
+  };
+
   const handleCheckout = () => {
     if (!stopDraft) {
       setStopDialogOpen(false);
@@ -396,8 +470,9 @@ export default function TablesView({
     const parts = full.split(/\s+/).filter(Boolean);
     const firstName = (parts[0] ?? '').trim() || matchedClient?.firstName || '';
     const lastName = (parts.slice(1).join(' ') ?? '').trim() || matchedClient?.lastName || '';
-    const phoneNumber = matchedClient?.phoneNumber || '';
-    const clientCode = matchedClient?.code || '';
+    const selectedClient = selectedClientId ? clients.find((c) => c.id === selectedClientId) : null;
+    const phoneNumber = selectedClient?.phoneNumber || matchedClient?.phoneNumber || '';
+    const clientCode = (selectedClient?.code || matchedClient?.code || customerCodeInput || '').trim();
 
     const parsedPaid = Number(String(paidAmountInput || '').replace(/,/g, ''));
     const paidAmount = paidFullyChecked ? totalCost : Math.max(0, Math.min(totalCost, Number.isFinite(parsedPaid) ? parsedPaid : 0));
@@ -443,6 +518,9 @@ export default function TablesView({
     reset(stopDraft.kind);
     setStopDialogOpen(false);
     setCustomerFullName('');
+    setCustomerCodeInput('');
+    setShowManualCodeInput(false);
+    setSelectedClientId(null);
     setPaidFullyChecked(true);
     setPaidAmountInput('');
   };
@@ -555,7 +633,22 @@ export default function TablesView({
                 <input
                   type="text"
                   value={tableSearchQuery}
-                  onChange={(e) => setTableSearchQuery(e.target.value)}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setTableSearchQuery(next);
+
+                    // If user typed an exact code, auto-select that client so checkout saves the code
+                    const q = next.trim().toUpperCase();
+                    setCustomerCodeInput(q);
+                    if (q) {
+                      const exact = clients.find((c) => (c.code || '').trim().toUpperCase() === q);
+                      if (exact) {
+                        setSelectedClientId(exact.id);
+                        setCustomerFullName(`${exact.firstName || ''} ${exact.lastName || ''}`.trim());
+                        setCustomerCodeInput((exact.code || '').toUpperCase());
+                      }
+                    }
+                  }}
                   placeholder={language === 'fa' ? 'جستجو...' : 'Search...'}
                   className="w-full px-4 py-2 rounded-lg bg-white/10 dark:bg-white/5 border border-white/20 backdrop-blur-lg text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-primary"
                 />
@@ -569,6 +662,8 @@ export default function TablesView({
                         type="button"
                         onClick={() => {
                           setCustomerFullName(`${c.firstName || ''} ${c.lastName || ''}`.trim());
+                          setCustomerCodeInput((c.code || '').toUpperCase());
+                          setSelectedClientId(c.id);
                           setTableSearchQuery('');
                         }}
                         className="w-full text-left px-3 py-2 hover:bg-white/10 transition flex items-center justify-between gap-3"
@@ -576,7 +671,14 @@ export default function TablesView({
                         <span className="text-white/90 truncate">
                           {`${c.firstName || ''} ${c.lastName || ''}`.trim() || '-'}
                         </span>
-                        <span className="text-white/70 font-mono tracking-widest whitespace-nowrap">{c.code || '-'}</span>
+                        <span className="flex items-center gap-2 whitespace-nowrap">
+                          {activeTableClientIds.has(c.id) && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-200">
+                              {language === 'fa' ? 'درحال بازی' : 'Playing'}
+                            </span>
+                          )}
+                          <span className="text-white/70 font-mono tracking-widest">{c.code || '-'}</span>
+                        </span>
                       </button>
                     ))}
                   </div>
@@ -725,6 +827,7 @@ export default function TablesView({
                     <th className={`${language === 'fa' ? 'text-right' : 'text-left'} py-2 px-3`}>{language === 'fa' ? 'مبلغ' : 'Amount'}</th>
                     <th className={`${language === 'fa' ? 'text-right' : 'text-left'} py-2 px-3`}>{language === 'fa' ? 'تاریخ' : 'Date'}</th>
                     <th className={`${language === 'fa' ? 'text-right' : 'text-left'} py-2 px-3`}>{language === 'fa' ? 'وضعیت' : 'Status'}</th>
+                    <th className={`${language === 'fa' ? 'text-left' : 'text-right'} py-2 px-3`}>{language === 'fa' ? 'ویرایش' : 'Edit'}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -764,6 +867,18 @@ export default function TablesView({
                             <span className="text-amber-300 text-xs">{language === 'fa' ? `نیمه (${(h.remainingAmount || 0).toLocaleString()})` : `Partial (${(h.remainingAmount || 0).toLocaleString()})`}</span>
                           )}
                         </td>
+                        <td className="py-2 px-3 whitespace-nowrap">
+                          <div className={`${language === 'fa' ? 'text-left' : 'text-right'}`}>
+                            <button
+                              type="button"
+                              onClick={() => openHistoryEdit(h)}
+                              className="inline-flex items-center justify-center w-8 h-8 rounded-md bg-white/5 border border-white/10 hover:bg-white/10 text-white"
+                              title={language === 'fa' ? 'ویرایش' : 'Edit'}
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     );
                   })}
@@ -794,18 +909,29 @@ export default function TablesView({
 
           <div className="space-y-3">
             {startDraft?.sessionCode ? (
-              <button
-                type="button"
-                onClick={() => copyToClipboard(startDraft.sessionCode)}
-                className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-left hover:bg-white/10 transition"
-                title={language === 'fa' ? 'برای کپی کد کلیک کنید' : 'Click to copy code'}
-              >
-                <div className="text-[10px] text-white/60">{language === 'fa' ? 'کد' : 'CODE'}</div>
-                <div className="text-base font-mono tracking-widest text-white">{startDraft.sessionCode}</div>
-                {copiedCode === startDraft.sessionCode && (
-                  <div className="text-[10px] text-emerald-300 mt-0.5">{language === 'fa' ? 'کپی شد' : 'Copied'}</div>
-                )}
-              </button>
+              <div className="flex items-stretch gap-2">
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(startDraft.sessionCode)}
+                  className="flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-left hover:bg-white/10 transition"
+                  title={language === 'fa' ? 'برای کپی کد کلیک کنید' : 'Click to copy code'}
+                >
+                  <div className="text-[10px] text-white/60">{language === 'fa' ? 'کد' : 'CODE'}</div>
+                  <div className="text-base font-mono tracking-widest text-white">{startDraft.sessionCode}</div>
+                  {copiedCode === startDraft.sessionCode && (
+                    <div className="text-[10px] text-emerald-300 mt-0.5">{language === 'fa' ? 'کپی شد' : 'Copied'}</div>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowManualCodeInput((p) => !p)}
+                  className="w-10 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 transition flex items-center justify-center"
+                  title={language === 'fa' ? 'ویرایش کد مشتری' : 'Edit client code'}
+                >
+                  <Pencil className="w-4 h-4 text-white/80" />
+                </button>
+              </div>
             ) : null}
 
             <label className="block text-sm text-white/80">
@@ -817,6 +943,23 @@ export default function TablesView({
               placeholder={language === 'fa' ? 'نام و نام خانوادگی' : 'Full name'}
               className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-primary"
             />
+
+            {showManualCodeInput && (
+              <input
+                value={customerCodeInput}
+                onChange={(e) => {
+                  const v = e.target.value.toUpperCase();
+                  setCustomerCodeInput(v);
+                  const exact = clients.find((c) => (c.code || '').trim().toUpperCase() === v.trim());
+                  if (exact) {
+                    setSelectedClientId(exact.id);
+                    setCustomerFullName(`${exact.firstName || ''} ${exact.lastName || ''}`.trim());
+                  }
+                }}
+                placeholder={language === 'fa' ? 'مثال: A1' : 'e.g. A1'}
+                className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-primary font-mono tracking-widest"
+              />
+            )}
           </div>
 
           <AlertDialogFooter>
@@ -843,6 +986,7 @@ export default function TablesView({
                       sessionCode,
                       startedAt,
                       customerFullName: name,
+                      customerClientId: selectedClientId,
                     },
                   };
                 });
@@ -853,6 +997,116 @@ export default function TablesView({
               }}
             >
               {language === 'fa' ? 'شروع' : 'Start'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Edit table history item */}
+      <AlertDialog open={historyEditOpen} onOpenChange={setHistoryEditOpen}>
+        <AlertDialogContent className="bg-[oklch(0.18_0.01_49)] border border-white/10 text-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{language === 'fa' ? 'ویرایش تاریخچه پرداخت میز' : 'Edit table payment'}</AlertDialogTitle>
+            <AlertDialogDescription className="text-white/70">
+              {historyEditDraft?.stoppedAt
+                ? formatHistoryDate(historyEditDraft.stoppedAt)
+                : historyEditDraft?.createdAt
+                  ? formatHistoryDate(historyEditDraft.createdAt)
+                  : ''}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          {historyEditDraft && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <input
+                  value={historyEditDraft.firstName || ''}
+                  onChange={(e) =>
+                    setHistoryEditDraft((prev) => (prev ? { ...prev, firstName: e.target.value } : prev))
+                  }
+                  placeholder={language === 'fa' ? 'نام' : 'First name'}
+                  className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+                <input
+                  value={historyEditDraft.lastName || ''}
+                  onChange={(e) =>
+                    setHistoryEditDraft((prev) => (prev ? { ...prev, lastName: e.target.value } : prev))
+                  }
+                  placeholder={language === 'fa' ? 'نام خانوادگی' : 'Last name'}
+                  className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+
+              <input
+                value={historyEditDraft.clientCode || ''}
+                onChange={(e) =>
+                  setHistoryEditDraft((prev) => (prev ? { ...prev, clientCode: e.target.value.toUpperCase() } : prev))
+                }
+                placeholder={language === 'fa' ? 'کد مشتری' : 'Client code'}
+                className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-primary font-mono tracking-widest"
+              />
+
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/5 p-3">
+                <div className="text-sm text-white/90">{language === 'fa' ? 'پرداخت کامل؟' : 'Paid fully?'}</div>
+                <Switch
+                  checked={!!historyEditDraft.paidFully}
+                  onCheckedChange={(v) =>
+                    setHistoryEditDraft((prev) => {
+                      if (!prev) return prev;
+                      const total = Math.round(prev.totalCost || 0);
+                      const paidFully = !!v;
+                      const paidAmount = paidFully ? total : Math.min(Math.round(prev.paidAmount || 0), total);
+                      const remainingAmount = paidFully ? 0 : Math.max(0, total - paidAmount);
+                      return { ...prev, paidFully, paidAmount, remainingAmount };
+                    })
+                  }
+                />
+              </div>
+
+              {!historyEditDraft.paidFully && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <input
+                    value={String(historyEditDraft.paidAmount ?? 0)}
+                    onChange={(e) => {
+                      const n = Number(String(e.target.value || '').replace(/,/g, ''));
+                      setHistoryEditDraft((prev) => {
+                        if (!prev) return prev;
+                        const total = Math.round(prev.totalCost || 0);
+                        const paidAmount = Math.max(0, Math.min(total, Number.isFinite(n) ? n : 0));
+                        const remainingAmount = Math.max(0, total - paidAmount);
+                        return { ...prev, paidAmount, remainingAmount };
+                      });
+                    }}
+                    placeholder={language === 'fa' ? 'مبلغ پرداختی' : 'Paid amount'}
+                    className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                  <input
+                    value={String(historyEditDraft.remainingAmount ?? 0)}
+                    readOnly
+                    placeholder={language === 'fa' ? 'باقی‌مانده' : 'Remaining'}
+                    className="w-full px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-white/80"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          <AlertDialogFooter>
+            <Button type="button" variant="destructive" onClick={handleDeleteHistory} disabled={!historyEditDraft}>
+              <Trash2 className="w-4 h-4 mr-2 rtl:mr-0 rtl:ml-2" />
+              {language === 'fa' ? 'حذف' : 'Delete'}
+            </Button>
+            <AlertDialogCancel
+              className="bg-white/10 border border-white/20 text-white hover:bg-white/15"
+              onClick={() => {
+                setHistoryEditOpen(false);
+                setHistoryEditDraft(null);
+              }}
+            >
+              {language === 'fa' ? 'بستن' : 'Close'}
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleSaveHistoryEdit} disabled={!historyEditDraft}>
+              {language === 'fa' ? 'ذخیره' : 'Save'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -885,6 +1139,44 @@ export default function TablesView({
               className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-primary"
               disabled={askCustomerOnStart}
             />
+
+            <div className="flex items-center justify-between">
+              <label className="block text-sm text-white/80">
+                {language === 'fa' ? 'کد مشتری' : 'Client code'}
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowManualCodeInput((p) => !p)}
+                className="text-xs text-white/80 hover:text-white underline-offset-4 hover:underline"
+              >
+                {showManualCodeInput
+                  ? language === 'fa'
+                    ? 'بستن'
+                    : 'Hide'
+                  : language === 'fa'
+                    ? 'ثبت کد'
+                    : 'Enter code'}
+              </button>
+            </div>
+
+            {showManualCodeInput && (
+              <input
+                value={customerCodeInput}
+                onChange={(e) => {
+                  const v = e.target.value.toUpperCase();
+                  setCustomerCodeInput(v);
+                  const exact = clients.find((c) => (c.code || '').trim().toUpperCase() === v.trim());
+                  if (exact) {
+                    setSelectedClientId(exact.id);
+                    if (!askCustomerOnStart) {
+                      setCustomerFullName(`${exact.firstName || ''} ${exact.lastName || ''}`.trim());
+                    }
+                  }
+                }}
+                placeholder={language === 'fa' ? 'مثال: A1' : 'e.g. A1'}
+                className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-primary font-mono tracking-widest"
+              />
+            )}
 
             {/* Payment status */}
             <div className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/5 p-3">
