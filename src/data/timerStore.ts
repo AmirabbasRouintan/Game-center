@@ -22,6 +22,11 @@ export type Client = {
 
 export type PlayHistoryItem = {
   id: string;
+  // where this history row came from
+  sessionType?: 'timer' | 'stable' | 'table';
+  // for table sessions
+  tableKind?: 'snooker' | 'eightBall';
+
   cardId: number;
   cardTitle: string;
   sessionDate?: string;
@@ -33,6 +38,8 @@ export type PlayHistoryItem = {
   firstName: string;
   lastName: string;
   phoneNumber: string;
+  // optional client code (used in table/stable for faster lookups)
+  clientCode?: string;
   paidAmount: number;
   paidFully: boolean;
   remainingAmount: number;

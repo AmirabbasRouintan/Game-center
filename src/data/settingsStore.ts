@@ -13,7 +13,7 @@ export type AppSettings = {
 
   // Home page UI
   homeShowTopTabs: boolean;
-  homeDefaultTab: 'stable' | 'timer';
+  homeDefaultTab: 'stable' | 'timer' | 'table';
 };
 
 const KEY = 'appSettings';

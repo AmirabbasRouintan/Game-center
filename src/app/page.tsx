@@ -12,6 +12,7 @@ import { numberToWords } from "@/utils/numberToWords";
 import { convertToEnglishDigits, formatNumberLocale } from "@/utils/formatNumber";
 import { timerStore, type GameCard, type Client, type PlayHistoryItem } from "@/data/timerStore";
 import { settingsStore } from "@/data/settingsStore";
+import TablesView from "@/components/TablesView";
 export default function Home() {
   const {
     t,
@@ -20,7 +21,7 @@ export default function Home() {
   const {
     showNotification
   } = useNotification();
-  const [activeTab, setActiveTab] = useState<'timer' | 'stable'>('stable');
+  const [activeTab, setActiveTab] = useState<'timer' | 'stable' | 'table'>('stable');
   const [homeShowTopTabs, setHomeShowTopTabs] = useState(true);
   const [cards, setCards] = useState<GameCard[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
@@ -553,6 +554,9 @@ export default function Home() {
           <button type="button" onClick={() => setActiveTab('stable')} className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${activeTab === 'stable' ? 'bg-white/20 text-white' : 'text-white/70 hover:text-white'}`}>
             {language === 'fa' ? 'پایدار' : 'Stable'}
           </button>
+          <button type="button" onClick={() => setActiveTab('table')} className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${activeTab === 'table' ? 'bg-white/20 text-white' : 'text-white/70 hover:text-white'}`}>
+            {language === 'fa' ? 'میز' : 'Table'}
+          </button>
         </div>}
 
         {}
@@ -829,7 +833,15 @@ export default function Home() {
               </div>;
           })()}
             </div>
-          </> : <div className="flex min-h-screen flex-col items-center justify-start py-16 gap-8">
+          </> : activeTab === 'table' ? (
+            <TablesView
+              language={language}
+              clients={clients}
+              costPerHour={costPerHour}
+              history={history}
+              onAddHistory={(item) => setHistory((prev) => [item, ...prev])}
+            />
+          ) : <div className="flex min-h-screen flex-col items-center justify-start py-16 gap-8">
             <div className="w-full max-w-6xl flex justify-end">
               <Button onClick={() => setStableAddClientDialogOpen(true)} size="lg" className="rounded-full shadow-lg hover:shadow-xl transition-all">
                 <Plus className="w-5 h-5 mr-2 rtl:mr-0 rtl:ml-2" />

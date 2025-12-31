@@ -3,13 +3,21 @@
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
 
-export default function LoadingScreen() {
-  const [isLoading, setIsLoading] = useState(true);
+type LoadingScreenProps = {
+  /** Whether the loading screen should be active/visible. */
+  enabled?: boolean;
+  /** Auto-hide after this duration (ms). Use 0 to hide immediately. */
+  durationMs?: number;
+};
 
-
-
+export default function LoadingScreen({
+  enabled = true,
+  durationMs = 1200,
+}: LoadingScreenProps) {
+  const [isLoading, setIsLoading] = useState(() => enabled);
 
   useEffect(() => {
+    // When disabled, just don't start timers. Rendering is gated by `enabled`.
     if (!enabled) return;
 
     // duration can be 0 (close immediately)

@@ -38,7 +38,7 @@ export default function SettingsPage() {
 
   // Home page UI
   const [homeShowTopTabs, setHomeShowTopTabs] = useState<boolean>(true);
-  const [homeDefaultTab, setHomeDefaultTab] = useState<'stable' | 'timer'>('stable');
+  const [homeDefaultTab, setHomeDefaultTab] = useState<'stable' | 'timer' | 'table'>('stable');
 
   // Load settings on mount
   useEffect(() => {
@@ -168,7 +168,7 @@ export default function SettingsPage() {
             patch.homeShowTopTabs = !!s.homeShowTopTabs;
           }
           if (s.homeDefaultTab !== undefined) {
-            const v = s.homeDefaultTab === 'timer' ? 'timer' : 'stable';
+            const v = s.homeDefaultTab === 'timer' ? 'timer' : s.homeDefaultTab === 'table' ? 'table' : 'stable';
             setHomeDefaultTab(v);
             patch.homeDefaultTab = v;
           }
@@ -337,7 +337,7 @@ export default function SettingsPage() {
                   <select
                     value={homeDefaultTab}
                     onChange={(e) => {
-                      const v = e.target.value === 'timer' ? 'timer' : 'stable';
+                      const v = e.target.value === 'timer' ? 'timer' : e.target.value === 'table' ? 'table' : 'stable';
                       setHomeDefaultTab(v);
                       settingsStore.savePartial({ homeDefaultTab: v });
                     }}
@@ -345,6 +345,7 @@ export default function SettingsPage() {
                   >
                     <option value="stable">{language === 'fa' ? 'پایدار' : 'Stable'}</option>
                     <option value="timer">{language === 'fa' ? 'تایمر' : 'Timer'}</option>
+                    <option value="table">{language === 'fa' ? 'میز' : 'Table'}</option>
                   </select>
                 </div>
               </div>
