@@ -408,11 +408,14 @@ export default function SettingsPage() {
                       setHomeDefaultTab(v);
                       settingsStore.savePartial({ homeDefaultTab: v });
                     }}
+                    // Some browsers ignore styling on <option> and default to white background.
+                    // We force a dark color-scheme so the native popup uses dark colors.
+                    style={{ colorScheme: 'dark' }}
                     className="px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white"
                   >
-                    <option value="stable">{language === 'fa' ? 'پایدار' : 'Stable'}</option>
-                    <option value="timer">{language === 'fa' ? 'تایمر' : 'Timer'}</option>
-                    <option value="table">{language === 'fa' ? 'میز' : 'Table'}</option>
+                    <option value="stable" className="bg-[oklch(0.18_0.01_49)] text-white">{language === 'fa' ? 'پایدار' : 'Stable'}</option>
+                    <option value="timer" className="bg-[oklch(0.18_0.01_49)] text-white">{language === 'fa' ? 'تایمر' : 'Timer'}</option>
+                    <option value="table" className="bg-[oklch(0.18_0.01_49)] text-white">{language === 'fa' ? 'میز' : 'Table'}</option>
                   </select>
                 </div>
               </div>
@@ -421,7 +424,7 @@ export default function SettingsPage() {
 
 
 
-          <section className="bg-white/10 dark:bg-white/5 backdrop-blur-lg rounded-lg border border-white/20 p-6 shadow-lg transition-all duration-300 hover:shadow-xl hover:border-white/30 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-200 lg:col-span-2">
+          <section className="bg-white/10 dark:bg-white/5 backdrop-blur-lg rounded-lg border border-white/20 p-6 shadow-lg transition-all duration-300 hover:shadow-xl hover:border-white/30 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-200">
             <h2 className="text-xl font-semibold text-white">{t('settings.display')}</h2>
             <p className="mt-2 text-sm text-zinc-400">
               {t('settings.displayDesc')}

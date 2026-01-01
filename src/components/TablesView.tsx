@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PlayHistoryItem } from '@/data/timerStore';
+import { tableSettingsStore, type AskCustomerTiming, type TableKind } from '@/data/tableSettingsStore';
 import { Play, Pause, Search, X, Filter, Pencil, Trash2, AlertCircle } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
@@ -23,8 +24,6 @@ export type TablesViewClient = {
   phoneNumber?: string;
   code?: string;
 };
-
-type TableKind = 'snooker' | 'eightBall';
 
 type TablePlayer = {
   fullName: string;
@@ -106,9 +105,39 @@ export default function TablesView({
   const [stopDialogOpen, setStopDialogOpen] = useState(false);
   const [stopDraft, setStopDraft] = useState<StopDraft | null>(null);
 
-  // Ask customer info timing
+  // Ask customer info timing (per table)
   // Default: ask on stop (so the cashier can enter details هنگام توقف)
-  const [askCustomerOnStart, setAskCustomerOnStart] = useState(true);
+  const [askCustomerTiming, setAskCustomerTiming] = useState<Record<TableKind, AskCustomerTiming>>({
+    snooker: 'stop',
+    eightBall: 'stop',
+  });
+
+  useEffect(() => {
+    let mounted = true;
+    tableSettingsStore
+      .load()
+      .then((s) => {
+        if (!mounted) return;
+        setAskCustomerTiming(s.askCustomerTimingByKind);
+      })
+      .catch(() => {
+        // ignore load errors; keep defaults
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const isAskCustomerOnStart = (kind: TableKind) => askCustomerTiming[kind] === 'start';
+
+  const setAskCustomerTimingFor = async (kind: TableKind, timing: AskCustomerTiming) => {
+    setAskCustomerTiming((prev) => ({ ...prev, [kind]: timing }));
+    try {
+      await tableSettingsStore.setAskCustomerTiming(kind, timing);
+    } catch {
+      // ignore persistence errors
+    }
+  };
 
   const [startDialogOpen, setStartDialogOpen] = useState(false);
   const [startDraft, setStartDraft] = useState<{ kind: TableKind; sessionCode: string; startedAt: string } | null>(
@@ -387,7 +416,7 @@ export default function TablesView({
 
     const sessionCode = current.sessionCode ?? makeSessionCode();
 
-    if (askCustomerOnStart) {
+    if (isAskCustomerOnStart(kind)) {
       // Open popup to capture players + show session code before starting
       setCustomerFullName(current.customerFullName || '');
       setPlayersCountInput('');
@@ -449,8 +478,10 @@ export default function TablesView({
       customerFullName: current.customerFullName,
     });
 
+    const askOnStart = isAskCustomerOnStart(kind);
+
     // Prefill name if we already have one (from start popup or from search)
-    if (askCustomerOnStart) {
+    if (askOnStart) {
       setCustomerFullName(current.customerFullName || '');
       setCustomerCodeInput('');
       setShowManualCodeInput(false);
@@ -537,7 +568,8 @@ export default function TablesView({
     const totalCost = Math.round(stopDraft.totalCost || 0);
     const effectiveCostPerHour = getEffectiveCostPerHour(stopDraft.kind);
 
-    const rawFull = (askCustomerOnStart ? stopDraft.customerFullName : customerFullName).trim();
+    const askOnStart = isAskCustomerOnStart(stopDraft.kind);
+    const rawFull = (askOnStart ? stopDraft.customerFullName : customerFullName).trim();
     const full = rawFull || (matchedClient ? `${matchedClient.firstName || ''} ${matchedClient.lastName || ''}`.trim() : '');
     const parts = full.split(/\s+/).filter(Boolean);
     const firstName = (parts[0] ?? '').trim() || matchedClient?.firstName || '';
@@ -552,7 +584,7 @@ export default function TablesView({
     const remainingAmount = Math.max(0, totalCost - paidAmount);
 
     // keep session customer name updated
-    if (askCustomerOnStart) {
+    if (askOnStart) {
       setSessions((prev) => ({
         ...prev,
         [stopDraft.kind]: { ...prev[stopDraft.kind], customerFullName: full },
@@ -689,6 +721,25 @@ export default function TablesView({
             </div>
           </div>
         )}
+
+        {/* Ask customer timing (per table) */}
+        <div className="mt-4 flex items-center justify-between">
+          <div className="text-xs text-white/80">
+            {language === 'fa' ? 'دریافت مشخصات مشتری:' : 'Ask customer info:'}
+          </div>
+          <div className="flex items-center gap-3">
+            <span className={`text-xs ${isAskCustomerOnStart(kind) ? 'text-white/60' : 'text-emerald-300'}`}>
+              {language === 'fa' ? 'هنگام توقف' : 'On stop'}
+            </span>
+            <Switch
+              checked={isAskCustomerOnStart(kind)}
+              onCheckedChange={(v) => setAskCustomerTimingFor(kind, v ? 'start' : 'stop')}
+            />
+            <span className={`text-xs ${isAskCustomerOnStart(kind) ? 'text-emerald-300' : 'text-white/60'}`}>
+              {language === 'fa' ? 'هنگام شروع' : 'On start'}
+            </span>
+          </div>
+        </div>
 
         <div className="mt-6 flex gap-2">
           {!s.running ? (
@@ -828,21 +879,6 @@ export default function TablesView({
               </div>
             </div>
 
-            {/* Toggle: ask customer on start vs stop */}
-            <div className="flex items-center justify-between">
-              <div className="text-xs text-white/80">
-                {language === 'fa' ? 'دریافت مشخصات مشتری:' : 'Ask customer info:'}
-              </div>
-              <div className="flex items-center gap-3">
-                <span className={`text-xs ${askCustomerOnStart ? 'text-white/60' : 'text-emerald-300'}`}>
-                  {language === 'fa' ? 'هنگام توقف' : 'On stop'}
-                </span>
-                <Switch checked={askCustomerOnStart} onCheckedChange={(v) => setAskCustomerOnStart(!!v)} />
-                <span className={`text-xs ${askCustomerOnStart ? 'text-emerald-300' : 'text-white/60'}`}>
-                  {language === 'fa' ? 'هنگام شروع' : 'On start'}
-                </span>
-              </div>
-            </div>
           </div>
         </div>
 
@@ -1334,7 +1370,7 @@ export default function TablesView({
               onChange={(e) => setCustomerFullName(e.target.value)}
               placeholder={language === 'fa' ? 'نام و نام خانوادگی' : 'Full name'}
               className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-primary"
-              disabled={askCustomerOnStart}
+              disabled={stopDraft ? isAskCustomerOnStart(stopDraft.kind) : false}
             />
 
             <div className="flex items-center justify-between">
@@ -1365,7 +1401,7 @@ export default function TablesView({
                   const exact = clients.find((c) => (c.code || '').trim().toUpperCase() === v.trim());
                   if (exact) {
                     setSelectedClientId(exact.id);
-                    if (!askCustomerOnStart) {
+                    if (stopDraft && !isAskCustomerOnStart(stopDraft.kind)) {
                       setCustomerFullName(`${exact.firstName || ''} ${exact.lastName || ''}`.trim());
                     }
                   }
