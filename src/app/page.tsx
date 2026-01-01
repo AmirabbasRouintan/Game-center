@@ -87,6 +87,10 @@ export default function Home() {
   const stopDialogDefaultPaidRef = useRef<string | null>(null);
   const [costPerHour, setCostPerHour] = useState<number>(0);
 
+  // Table per-hour prices
+  const [tableCostPerHourSnooker, setTableCostPerHourSnooker] = useState<number>(0);
+  const [tableCostPerHourEightBall, setTableCostPerHourEightBall] = useState<number>(0);
+
   const applyCustomerToForm = (c: {
     firstName: string;
     lastName: string;
@@ -106,6 +110,8 @@ export default function Home() {
       setHomeShowTopTabs(s.homeShowTopTabs);
       setActiveTab(s.homeDefaultTab);
       setCostPerHour(parseFloat(s.costPerHour || '0'));
+      setTableCostPerHourSnooker(parseFloat(s.tableCostPerHourSnooker || '0'));
+      setTableCostPerHourEightBall(parseFloat(s.tableCostPerHourEightBall || '0'));
 
       // 2. Data
       const c = await timerStore.loadCards();
@@ -273,6 +279,7 @@ export default function Home() {
     const totalCost = stoppedCardDraft.totalCost;
     const paid = Math.max(0, parseFloat(paidAmount || '0') || 0);
     const remaining = paidFully ? Math.max(0, totalCost - paid) : Math.max(0, parseFloat(remainingAmount || '0') || 0);
+    const foundClient = clients.find(c => `${c.firstName} ${c.lastName}` === stoppedCardDraft.cardTitle);
     const item: PlayHistoryItem = {
       id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
       cardId: stoppedCardDraft.cardId,
@@ -286,6 +293,7 @@ export default function Home() {
       firstName: firstName.trim(),
       lastName: lastName.trim(),
       phoneNumber: phoneNumber.trim(),
+      clientCode: foundClient?.code || undefined,
       paidAmount: paid,
       paidFully,
       remainingAmount: remaining,
@@ -442,6 +450,7 @@ export default function Home() {
         firstName: client.firstName,
         lastName: client.lastName,
         phoneNumber: client.phoneNumber || '',
+        clientCode: client.code || undefined,
         paidAmount: totalCostRounded,
         paidFully: true,
         remainingAmount: 0,
@@ -559,6 +568,25 @@ export default function Home() {
           </button>
         </div>}
 
+        {/* Top bar search (always visible on Timer tab) */}
+        {activeTab === 'timer' && (
+          <div className="fixed top-28 left-[10%] rtl:left-auto rtl:right-[10%] z-40 w-[min(420px,80vw)] animate-in fade-in slide-in-from-top-4 duration-700 delay-300">
+            <div className="flex items-center gap-2 bg-white/10 dark:bg-white/5 backdrop-blur-lg border border-white/20 rounded-full p-1 shadow-lg">
+              <input
+                type="text"
+                value={searchCode}
+                onChange={(e) => setSearchCode(e.target.value)}
+                placeholder={t('home.searchPlaceholder')}
+                className="flex-1 bg-transparent px-4 py-2 text-white placeholder-zinc-400 focus:outline-none"
+              />
+              <Button onClick={() => setSearchCode('')} className="whitespace-nowrap rounded-full" size="sm" variant={searchCode ? 'destructive' : 'default'}>
+                {searchCode ? <X className="w-4 h-4 mr-2 rtl:mr-0 rtl:ml-2" /> : <Search className="w-4 h-4 mr-2 rtl:mr-0 rtl:ml-2" />}
+                {searchCode ? t('home.cancel') : t('home.search')}
+              </Button>
+            </div>
+          </div>
+        )}
+
         {}
         {activeTab === 'timer' ? <>
             <div className="fixed top-28 right-[10%] z-40 rtl:right-auto rtl:left-[10%] animate-in fade-in slide-in-from-top-4 duration-700 delay-300">
@@ -570,15 +598,6 @@ export default function Home() {
 
             <div className="flex min-h-screen flex-col items-center justify-center py-16 gap-8">
           
-          {}
-          <div className="w-full max-w-md flex items-center gap-2">
-            <input type="text" value={searchCode} onChange={e => setSearchCode(e.target.value)} placeholder={t('home.searchPlaceholder')} className="flex-1 px-4 py-2 rounded-lg bg-white/10 dark:bg-white/5 border border-white/20 backdrop-blur-lg text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-primary" />
-            <Button onClick={() => setSearchCode('')} className="whitespace-nowrap" variant={searchCode ? "destructive" : "default"}>
-              {searchCode ? <X className="w-4 h-4 mr-2 rtl:mr-0 rtl:ml-2" /> : <Search className="w-4 h-4 mr-2 rtl:mr-0 rtl:ml-2" />}
-              {searchCode ? t('home.cancel') : t('home.search')}
-            </Button>
-          </div>
-
           <div className="flex flex-wrap gap-4 items-center justify-center">
         {(filteredCards ?? cards).map(card => {
               const client = clients.find(c => `${c.firstName} ${c.lastName}` === card.title);
@@ -838,6 +857,8 @@ export default function Home() {
               language={language}
               clients={clients}
               costPerHour={costPerHour}
+              tableCostPerHourSnooker={tableCostPerHourSnooker}
+              tableCostPerHourEightBall={tableCostPerHourEightBall}
               history={history}
               onAddHistory={(item) => setHistory((prev) => [item, ...prev])}
               onUpdateHistory={(item) =>

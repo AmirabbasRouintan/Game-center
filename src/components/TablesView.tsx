@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PlayHistoryItem } from '@/data/timerStore';
-import { Play, Pause, Search, X, Filter, Pencil, Trash2 } from 'lucide-react';
+import { Play, Pause, Search, X, Filter, Pencil, Trash2, AlertCircle } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import {
@@ -26,12 +26,20 @@ export type TablesViewClient = {
 
 type TableKind = 'snooker' | 'eightBall';
 
+type TablePlayer = {
+  fullName: string;
+  code: string;
+};
+
 type TableSession = {
   kind: TableKind;
   running: boolean;
   elapsedSeconds: number;
   sessionCode: string | null;
   startedAt: string | null;
+  /** Players currently assigned to this table session */
+  players: TablePlayer[];
+  // kept for compatibility with existing checkout/history flow (uses a single name)
   customerFullName: string;
   customerClientId: string | null;
 };
@@ -50,6 +58,8 @@ export default function TablesView({
   language,
   clients,
   costPerHour,
+  tableCostPerHourSnooker,
+  tableCostPerHourEightBall,
   history,
   onAddHistory,
   onUpdateHistory,
@@ -58,6 +68,8 @@ export default function TablesView({
   language: 'fa' | 'en';
   clients: TablesViewClient[];
   costPerHour: number;
+  tableCostPerHourSnooker: number;
+  tableCostPerHourEightBall: number;
   history: PlayHistoryItem[];
   onAddHistory: (item: PlayHistoryItem) => void;
   onUpdateHistory: (item: PlayHistoryItem) => void;
@@ -70,6 +82,7 @@ export default function TablesView({
       elapsedSeconds: 0,
       sessionCode: null,
       startedAt: null,
+      players: [],
       customerFullName: '',
       customerClientId: null,
     },
@@ -79,6 +92,7 @@ export default function TablesView({
       elapsedSeconds: 0,
       sessionCode: null,
       startedAt: null,
+      players: [],
       customerFullName: '',
       customerClientId: null,
     },
@@ -93,6 +107,7 @@ export default function TablesView({
   const [stopDraft, setStopDraft] = useState<StopDraft | null>(null);
 
   // Ask customer info timing
+  // Default: ask on stop (so the cashier can enter details هنگام توقف)
   const [askCustomerOnStart, setAskCustomerOnStart] = useState(true);
 
   const [startDialogOpen, setStartDialogOpen] = useState(false);
@@ -100,8 +115,44 @@ export default function TablesView({
     null,
   );
 
+  // Start popup: players
+  const [playersCountInput, setPlayersCountInput] = useState('');
+  const [startPlayers, setStartPlayers] = useState<TablePlayer[]>([]);
+
+  const makePlayerCode = () => {
+    // 2 letters (A-Z) for very fast typing/reading
+    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    try {
+      const buf = new Uint8Array(2);
+      crypto.getRandomValues(buf);
+      return `${letters[buf[0] % letters.length]}${letters[buf[1] % letters.length]}`;
+    } catch {
+      const ms = Date.now();
+      return `${letters[ms % letters.length]}${letters[(ms >> 3) % letters.length]}`;
+    }
+  };
+
+  const clampPlayerCount = (n: number) => {
+    if (!Number.isFinite(n)) return 0;
+    return Math.max(0, Math.min(12, Math.floor(n)));
+  };
+
+  const syncPlayersToCount = (count: number) => {
+    setStartPlayers((prev) => {
+      const c = clampPlayerCount(count);
+      if (c <= 0) return [];
+      const next = prev.slice(0, c);
+      while (next.length < c) {
+        next.push({ fullName: '', code: makePlayerCode() });
+      }
+      return next;
+    });
+  };
+
   // Top search (like stable page)
   const [tableSearchQuery, setTableSearchQuery] = useState('');
+
+  // History search (removed)
   const [tableFilterOpen, setTableFilterOpen] = useState(false);
   const [tableFilterByCode, setTableFilterByCode] = useState(true);
   const [tableFilterByName, setTableFilterByName] = useState(false);
@@ -113,6 +164,7 @@ export default function TablesView({
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [paidFullyChecked, setPaidFullyChecked] = useState(true);
   const [paidAmountInput, setPaidAmountInput] = useState('');
+  const [winnerCodeInput, setWinnerCodeInput] = useState('');
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
   // History edit/delete
@@ -277,9 +329,16 @@ export default function TablesView({
     return `${pad(hh)}:${pad(mm)}:${pad(ss)}`;
   };
 
-  const calcCost = (elapsedSeconds: number) => {
+  const getEffectiveCostPerHour = (kind: TableKind) => {
+    const perKind = kind === 'snooker' ? tableCostPerHourSnooker : tableCostPerHourEightBall;
+    const v = Number.isFinite(perKind) && perKind > 0 ? perKind : costPerHour;
+    return Number.isFinite(v) ? v : 0;
+  };
+
+  const calcCost = (kind: TableKind, elapsedSeconds: number) => {
     const hours = elapsedSeconds / 3600;
-    const cost = hours * (Number.isFinite(costPerHour) ? costPerHour : 0);
+    const perHour = getEffectiveCostPerHour(kind);
+    const cost = hours * perHour;
     // round to nearest whole unit
     return Math.round(cost);
   };
@@ -329,8 +388,10 @@ export default function TablesView({
     const sessionCode = current.sessionCode ?? makeSessionCode();
 
     if (askCustomerOnStart) {
-      // Open popup to capture name and show code before starting
+      // Open popup to capture players + show session code before starting
       setCustomerFullName(current.customerFullName || '');
+      setPlayersCountInput('');
+      setStartPlayers([]);
       setStartDraft({ kind, sessionCode, startedAt });
       setStartDialogOpen(true);
       return;
@@ -345,6 +406,7 @@ export default function TablesView({
           running: true,
           sessionCode,
           startedAt,
+          players: c.players || [],
           customerClientId: selectedClientId,
         },
       };
@@ -375,7 +437,7 @@ export default function TablesView({
 
     // open dialog
     const current = sessions[kind];
-    const totalCost = calcCost(current.elapsedSeconds);
+    const totalCost = calcCost(kind, current.elapsedSeconds);
     const stoppedAt = new Date().toISOString();
     setStopDraft({
       kind,
@@ -401,6 +463,14 @@ export default function TablesView({
     setPaidFullyChecked(true);
     setPaidAmountInput(String(totalCost));
 
+    // Winner defaults: if exactly 2 players, preselect first player's code
+    const sessionPlayers = (current.players || []).filter((p) => (p.code || '').trim().length > 0);
+    if (sessionPlayers.length === 2) {
+      setWinnerCodeInput(sessionPlayers[0]?.code || '');
+    } else {
+      setWinnerCodeInput('');
+    }
+
     setStopDialogOpen(true);
   };
 
@@ -419,6 +489,7 @@ export default function TablesView({
         elapsedSeconds: 0,
         sessionCode: null,
         startedAt: null,
+        players: [],
         customerFullName: '',
         customerClientId: null,
       },
@@ -464,6 +535,7 @@ export default function TablesView({
     }
 
     const totalCost = Math.round(stopDraft.totalCost || 0);
+    const effectiveCostPerHour = getEffectiveCostPerHour(stopDraft.kind);
 
     const rawFull = (askCustomerOnStart ? stopDraft.customerFullName : customerFullName).trim();
     const full = rawFull || (matchedClient ? `${matchedClient.firstName || ''} ${matchedClient.lastName || ''}`.trim() : '');
@@ -487,10 +559,14 @@ export default function TablesView({
       }));
     }
 
+    const playersCount = sessions[stopDraft.kind]?.players?.length ?? 0;
+
     const item: PlayHistoryItem = {
       id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
       sessionType: 'table',
       tableKind: stopDraft.kind,
+      winnerCode: (winnerCodeInput || '').trim() || undefined,
+      playersCount: playersCount > 0 ? playersCount : undefined,
       // keep compatibility with existing history schema
       cardId: 0,
       cardTitle:
@@ -501,7 +577,7 @@ export default function TablesView({
       startedAt: stopDraft.startedAt ?? undefined,
       stoppedAt: stopDraft.stoppedAt,
       secondsPlayed: stopDraft.elapsedSeconds,
-      costPerHour,
+      costPerHour: effectiveCostPerHour,
       totalCost,
       firstName,
       lastName,
@@ -523,6 +599,7 @@ export default function TablesView({
     setSelectedClientId(null);
     setPaidFullyChecked(true);
     setPaidAmountInput('');
+    setWinnerCodeInput('');
   };
 
   const renderTableCard = (kind: TableKind) => {
@@ -583,9 +660,35 @@ export default function TablesView({
         <div className="mt-6 text-center">
           <div className="text-4xl font-mono font-bold text-white">{formatTime(s.elapsedSeconds)}</div>
           <div className="mt-2 text-sm text-white/70">
-            {language === 'fa' ? 'مبلغ تا این لحظه:' : 'Cost so far:'} {calcCost(s.elapsedSeconds)}
+            {language === 'fa' ? 'مبلغ تا این لحظه:' : 'Cost so far:'} {calcCost(s.kind, s.elapsedSeconds)}
           </div>
         </div>
+
+        {/* Players list (shown on the table card) */}
+        {s.players?.length > 0 && (
+          <div className="mt-4 rounded-lg border border-white/10 bg-black/20 p-3">
+            <div className="text-[10px] tracking-wide text-white/60 mb-2">
+              {language === 'fa' ? 'بازیکن‌ها' : 'PLAYERS'}
+            </div>
+            <div className="space-y-1">
+              {s.players.map((p, idx) => (
+                <div key={`${p.code}-${idx}`} className="flex items-center justify-between gap-3">
+                  <div className="text-sm text-white/90 truncate">
+                    {p.fullName || (language === 'fa' ? `بازیکن ${idx + 1}` : `Player ${idx + 1}`)}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard(p.code)}
+                    className="shrink-0 font-mono text-xs tracking-widest text-white/90 rounded-md border border-white/10 bg-white/5 px-2 py-1 hover:bg-white/10"
+                    title={language === 'fa' ? 'برای کپی کد کلیک کنید' : 'Click to copy code'}
+                  >
+                    {p.code}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="mt-6 flex gap-2">
           {!s.running ? (
@@ -823,11 +926,13 @@ export default function TablesView({
                     <th className={`${language === 'fa' ? 'text-right' : 'text-left'} py-2 px-3`}>{language === 'fa' ? 'میز' : 'Table'}</th>
                     <th className={`${language === 'fa' ? 'text-right' : 'text-left'} py-2 px-3`}>{language === 'fa' ? 'مشتری' : 'Client'}</th>
                     <th className={`${language === 'fa' ? 'text-right' : 'text-left'} py-2 px-3`}>{language === 'fa' ? 'کد' : 'Code'}</th>
+                    <th className={`${language === 'fa' ? 'text-right' : 'text-left'} py-2 px-3`}>{language === 'fa' ? 'برنده' : 'Winner'}</th>
                     <th className={`${language === 'fa' ? 'text-right' : 'text-left'} py-2 px-3`}>{language === 'fa' ? 'زمان' : 'Time'}</th>
                     <th className={`${language === 'fa' ? 'text-right' : 'text-left'} py-2 px-3`}>{language === 'fa' ? 'مبلغ' : 'Amount'}</th>
                     <th className={`${language === 'fa' ? 'text-right' : 'text-left'} py-2 px-3`}>{language === 'fa' ? 'تاریخ' : 'Date'}</th>
                     <th className={`${language === 'fa' ? 'text-right' : 'text-left'} py-2 px-3`}>{language === 'fa' ? 'وضعیت' : 'Status'}</th>
                     <th className={`${language === 'fa' ? 'text-left' : 'text-right'} py-2 px-3`}>{language === 'fa' ? 'ویرایش' : 'Edit'}</th>
+                    <th className={`${language === 'fa' ? 'text-left' : 'text-right'} py-2 px-3`}>{language === 'fa' ? '!' : '!'}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -857,6 +962,20 @@ export default function TablesView({
                             '-'
                           )}
                         </td>
+                        <td className="py-2 px-3 whitespace-nowrap font-mono tracking-widest">
+                          {h.winnerCode ? (
+                            <button
+                              type="button"
+                              onClick={() => copyToClipboard(h.winnerCode)}
+                              className="hover:underline underline-offset-4"
+                              title={language === 'fa' ? 'برای کپی کلیک کنید' : 'Click to copy'}
+                            >
+                              {h.winnerCode}
+                            </button>
+                          ) : (
+                            '-'
+                          )}
+                        </td>
                         <td className="py-2 px-3 whitespace-nowrap font-mono">{formatTime(h.secondsPlayed || 0)}</td>
                         <td className="py-2 px-3 whitespace-nowrap">{Math.round(h.paidAmount || h.totalCost || 0).toLocaleString()}</td>
                         <td className="py-2 px-3 whitespace-nowrap text-zinc-300">{formatHistoryDate(h.stoppedAt || h.createdAt)}</td>
@@ -879,6 +998,20 @@ export default function TablesView({
                             </button>
                           </div>
                         </td>
+                        <td className="py-2 px-3 whitespace-nowrap">
+                          {typeof h.playersCount === 'number' && h.playersCount > 0 ? (
+                            <span
+                              className={`inline-flex items-center justify-center w-7 h-7 rounded-full border border-white/15 bg-white/5 text-white/90 ${
+                                language === 'fa' ? 'ml-0' : ''
+                              }`}
+                              title={language === 'fa' ? `تعداد بازیکن‌ها: ${h.playersCount}` : `Players: ${h.playersCount}`}
+                            >
+                              <AlertCircle className="w-4 h-4" />
+                            </span>
+                          ) : (
+                            <span className="text-white/30">-</span>
+                          )}
+                        </td>
                       </tr>
                     );
                   })}
@@ -896,14 +1029,24 @@ export default function TablesView({
       </div>
 
       {/* Start dialog (when asking customer info on start) */}
-      <AlertDialog open={startDialogOpen} onOpenChange={setStartDialogOpen}>
+      <AlertDialog
+       open={startDialogOpen}
+       onOpenChange={(open) => {
+         setStartDialogOpen(open);
+         if (!open) {
+           setStartDraft(null);
+           setPlayersCountInput('');
+           setStartPlayers([]);
+         }
+       }}
+     >
         <AlertDialogContent className="bg-[oklch(0.18_0.01_49)] border border-white/10 text-white">
           <AlertDialogHeader>
             <AlertDialogTitle>{language === 'fa' ? 'شروع میز' : 'Start Table'}</AlertDialogTitle>
             <AlertDialogDescription className="text-white/70">
               {language === 'fa'
-                ? 'نام مشتری را وارد کنید. کد جلسه هم نمایش داده می‌شود.'
-                : 'Enter customer name. Session code is shown below.'}
+                ? 'تعداد بازیکن‌ها را وارد کنید و نام آن‌ها را بنویسید. کد جلسه هم نمایش داده می‌شود.'
+                : 'Enter number of players and their names. Session code is shown below.'}
             </AlertDialogDescription>
           </AlertDialogHeader>
 
@@ -935,15 +1078,60 @@ export default function TablesView({
             ) : null}
 
             <label className="block text-sm text-white/80">
-              {language === 'fa' ? 'نام و نام خانوادگی' : 'Full name'}
+              {language === 'fa' ? 'تعداد بازیکن‌ها' : 'How many players'}
             </label>
             <input
-              value={customerFullName}
-              onChange={(e) => setCustomerFullName(e.target.value)}
-              placeholder={language === 'fa' ? 'نام و نام خانوادگی' : 'Full name'}
+              inputMode="numeric"
+              value={playersCountInput}
+              onChange={(e) => {
+                const raw = e.target.value;
+                // keep only digits
+                const digitsOnly = raw.replace(/[^0-9]/g, '');
+                setPlayersCountInput(digitsOnly);
+                const n = clampPlayerCount(Number(digitsOnly || 0));
+                syncPlayersToCount(n);
+              }}
+              placeholder={language === 'fa' ? 'مثلا 3' : 'e.g. 3'}
               className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-primary"
             />
 
+            {startPlayers.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-xs text-white/60">
+                  {language === 'fa' ? 'نام هر بازیکن و کد کنار آن:' : 'Each player name + code:'}
+                </div>
+                {startPlayers.map((p, idx) => (
+                  <div key={p.code} className="flex items-center gap-2">
+                    <input
+                      value={p.fullName}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setStartPlayers((prev) => prev.map((x, i) => (i === idx ? { ...x, fullName: v } : x)));
+                      }}
+                      placeholder={language === 'fa' ? `بازیکن ${idx + 1} - نام و نام خانوادگی` : `Player ${idx + 1} - full name`}
+                      className="flex-1 px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-primary"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(p.code)}
+                      className="shrink-0 rounded-lg border border-white/10 bg-white/5 px-3 py-2 hover:bg-white/10 transition"
+                      title={language === 'fa' ? 'برای کپی کد کلیک کنید' : 'Click to copy code'}
+                    >
+                      <div className="text-[10px] text-white/60">{language === 'fa' ? 'کد' : 'CODE'}</div>
+                      <div className="text-sm font-mono tracking-widest text-white">{p.code}</div>
+                      {copiedCode === p.code && (
+                        <div className="text-[10px] text-emerald-300 mt-0.5">
+                          {language === 'fa' ? 'کپی شد' : 'Copied'}
+                        </div>
+                      )}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* (kept) optional manual client code input for existing client selection */}
             {showManualCodeInput && (
               <input
                 value={customerCodeInput}
@@ -956,7 +1144,7 @@ export default function TablesView({
                     setCustomerFullName(`${exact.firstName || ''} ${exact.lastName || ''}`.trim());
                   }
                 }}
-                placeholder={language === 'fa' ? 'مثال: A1' : 'e.g. A1'}
+                placeholder={language === 'fa' ? 'کد مشتری (اختیاری) - مثال: A1' : 'Client code (optional) - e.g. A1'}
                 className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-primary font-mono tracking-widest"
               />
             )}
@@ -974,7 +1162,13 @@ export default function TablesView({
                 }
 
                 const { kind, sessionCode, startedAt } = startDraft;
-                const name = customerFullName.trim();
+
+                const players = startPlayers
+                  .map((p) => ({ ...p, fullName: (p.fullName || '').trim() }))
+                  .filter((p) => p.fullName.length > 0);
+
+                // keep single-name field populated (for existing checkout/history)
+                const name = (players[0]?.fullName || '').trim();
 
                 setSessions((prev) => {
                   const c = prev[kind];
@@ -985,6 +1179,7 @@ export default function TablesView({
                       running: true,
                       sessionCode,
                       startedAt,
+                      players,
                       customerFullName: name,
                       customerClientId: selectedClientId,
                     },
@@ -993,6 +1188,8 @@ export default function TablesView({
 
                 setStartDialogOpen(false);
                 setStartDraft(null);
+                setPlayersCountInput('');
+                setStartPlayers([]);
                 startTimerInternal(kind);
               }}
             >
@@ -1176,6 +1373,44 @@ export default function TablesView({
                 placeholder={language === 'fa' ? 'مثال: A1' : 'e.g. A1'}
                 className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-primary font-mono tracking-widest"
               />
+            )}
+
+            {/* Winner */}
+            {stopDraft && sessions[stopDraft.kind]?.players?.length > 0 && (
+              <div className="space-y-2 rounded-lg border border-white/10 bg-white/5 p-3">
+                <div className="text-sm text-white/90">
+                  {language === 'fa' ? 'برنده کیست؟ (کد)' : 'Who wins? (code)'}
+                </div>
+
+                <select
+                  value={winnerCodeInput}
+                  onChange={(e) => setWinnerCodeInput(e.target.value)}
+                  className="h-10 w-full rounded-lg bg-white/10 border border-white/20 text-white text-sm px-3"
+                >
+                  <option value="" className="bg-black">
+                    {language === 'fa' ? 'انتخاب کنید' : 'Select winner'}
+                  </option>
+                  {sessions[stopDraft.kind].players.map((p, idx) => (
+                    <option key={`${p.code}-${idx}`} value={p.code} className="bg-black">
+                      {p.code} — {p.fullName || (language === 'fa' ? `بازیکن ${idx + 1}` : `Player ${idx + 1}`)}
+                    </option>
+                  ))}
+                </select>
+
+                {winnerCodeInput && (
+                  <div className="text-xs text-white/70">
+                    {language === 'fa' ? 'کد برنده:' : 'Winner code:'}{' '}
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(winnerCodeInput)}
+                      className="font-mono tracking-widest hover:underline underline-offset-4"
+                      title={language === 'fa' ? 'برای کپی کلیک کنید' : 'Click to copy'}
+                    >
+                      {winnerCodeInput}
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
 
             {/* Payment status */}

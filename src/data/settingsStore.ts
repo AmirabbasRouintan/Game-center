@@ -6,6 +6,10 @@ export type AppSettings = {
   darkVeilTint: string;
   costPerHour: string;
 
+  // Table per-hour prices
+  tableCostPerHourSnooker: string;
+  tableCostPerHourEightBall: string;
+
   gameCenterName: string;
   backgroundImage: string | null;
 
@@ -26,6 +30,9 @@ const defaultSettings: AppSettings = {
   darkVeilOpacity: 0.5,
   darkVeilTint: '#ffffff',
   costPerHour: '',
+
+  tableCostPerHourSnooker: '',
+  tableCostPerHourEightBall: '',
 
   gameCenterName: '',
   backgroundImage: null,

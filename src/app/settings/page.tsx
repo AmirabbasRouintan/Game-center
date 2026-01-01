@@ -26,6 +26,11 @@ export default function SettingsPage() {
   const [exportFormat, setExportFormat] = useState<'json' | 'excel'>('json');
   const [showClearDialog, setShowClearDialog] = useState(false);
   const [costPerHour, setCostPerHour] = useState<string>('');
+
+  // Table per-hour prices
+  const [tableCostPerHourSnooker, setTableCostPerHourSnooker] = useState<string>('');
+  const [tableCostPerHourEightBall, setTableCostPerHourEightBall] = useState<string>('');
+
   const [gameCenterName, setGameCenterName] = useState<string>('');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newUsername, setNewUsername] = useState('');
@@ -49,6 +54,8 @@ export default function SettingsPage() {
       setDarkVeilEnabled(s.darkVeilEnabled);
       setDarkVeilOpacity(s.darkVeilOpacity);
       setCostPerHour(s.costPerHour);
+      setTableCostPerHourSnooker(s.tableCostPerHourSnooker || '');
+      setTableCostPerHourEightBall(s.tableCostPerHourEightBall || '');
       setGameCenterName(s.gameCenterName);
       setBackgroundImage(s.backgroundImage);
 
@@ -155,6 +162,14 @@ export default function SettingsPage() {
             patch.costPerHour = String(s.costPerHour);
           }
 
+          if (s.tableCostPerHourSnooker !== undefined) {
+            setTableCostPerHourSnooker(String(s.tableCostPerHourSnooker));
+            patch.tableCostPerHourSnooker = String(s.tableCostPerHourSnooker);
+          }
+          if (s.tableCostPerHourEightBall !== undefined) {
+            setTableCostPerHourEightBall(String(s.tableCostPerHourEightBall));
+            patch.tableCostPerHourEightBall = String(s.tableCostPerHourEightBall);
+          }
 
           if (s.gameCenterName !== undefined) {
             setGameCenterName(String(s.gameCenterName));
@@ -196,6 +211,14 @@ export default function SettingsPage() {
   const saveCostPerHour = () => {
     settingsStore.savePartial({ costPerHour });
     alert(t('settings.nameUpdated'));
+  };
+
+  const saveTableCostsPerHour = async () => {
+    await settingsStore.savePartial({
+      tableCostPerHourSnooker,
+      tableCostPerHourEightBall,
+    });
+    alert(language === 'fa' ? 'قیمت‌های میز به‌روزرسانی شد.' : 'Table prices updated.');
   };
   const updateGameCenterName = () => {
     if (gameCenterName.trim()) {
@@ -304,6 +327,47 @@ export default function SettingsPage() {
                 </p>}
               <Button onClick={saveCostPerHour} className="w-full mt-3 transition-all duration-300 hover:scale-105">
                 {t('update Price')}
+              </Button>
+            </div>
+          </section>
+
+          <section className="bg-white/10 dark:bg-white/5 backdrop-blur-lg rounded-lg border border-white/20 p-6 shadow-lg transition-all duration-300 hover:shadow-xl hover:border-white/30 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-200">
+            <h2 className="text-xl font-semibold text-white">{language === 'fa' ? 'قیمت میز (ساعتی)' : 'Table price (per hour)'}</h2>
+            <p className="mt-2 text-sm text-zinc-400">
+              {language === 'fa' ? 'قیمت ساعتی برای بیلیارد/اسنوکر و ایت‌بال را وارد کنید.' : 'Enter per-hour prices for Snooker/Billiard and Eight-ball.'}
+            </p>
+
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="block text-sm text-white/80 mb-2">{language === 'fa' ? 'بیلیارد / اسنوکر (ساعتی)' : 'Snooker / Billiard (per hour)'}</label>
+                <div className="relative">
+                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400" />
+                  <input
+                    type="number"
+                    value={tableCostPerHourSnooker}
+                    onChange={(e) => setTableCostPerHourSnooker(e.target.value)}
+                    placeholder={language === 'fa' ? 'مثلا 100000' : 'e.g. 100000'}
+                    className="w-full pl-10 pr-4 py-3 rounded-lg bg-white/10 dark:bg-black/20 border border-white/20 backdrop-blur-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-primary transition-all duration-300"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm text-white/80 mb-2">{language === 'fa' ? 'ایت‌بال (ساعتی)' : 'Eight-ball (per hour)'}</label>
+                <div className="relative">
+                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400" />
+                  <input
+                    type="number"
+                    value={tableCostPerHourEightBall}
+                    onChange={(e) => setTableCostPerHourEightBall(e.target.value)}
+                    placeholder={language === 'fa' ? 'مثلا 80000' : 'e.g. 80000'}
+                    className="w-full pl-10 pr-4 py-3 rounded-lg bg-white/10 dark:bg-black/20 border border-white/20 backdrop-blur-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-primary transition-all duration-300"
+                  />
+                </div>
+              </div>
+
+              <Button onClick={saveTableCostsPerHour} className="w-full mt-1 transition-all duration-300 hover:scale-105">
+                {language === 'fa' ? 'به‌روزرسانی قیمت میز' : 'Update table prices'}
               </Button>
             </div>
           </section>

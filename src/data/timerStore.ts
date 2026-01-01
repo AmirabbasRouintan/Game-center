@@ -27,6 +27,12 @@ export type PlayHistoryItem = {
   // for table sessions
   tableKind?: 'snooker' | 'eightBall';
 
+  // for table sessions: winner information
+  winnerCode?: string;
+
+  // for table sessions: how many players were in this match
+  playersCount?: number;
+
   cardId: number;
   cardTitle: string;
   sessionDate?: string;
