@@ -595,7 +595,7 @@ export default function SettingsPage() {
             </p>
           </section>
 
-          <section className="bg-white/10 dark:bg-white/5 backdrop-blur-lg rounded-lg border border-white/20 p-6 shadow-lg transition-all duration-300 hover:shadow-xl hover:border-white/30 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-200">
+          <section className="bg-white/10 dark:bg-white/5 backdrop-blur-lg rounded-lg border border-white/20 p-6 shadow-lg transition-all duration-300 hover:shadow-xl hover:border-white/30 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-200 lg:col-span-2">
             <h2 className="text-xl font-semibold text-white">{t('settings.display')}</h2>
             <p className="mt-2 text-sm text-zinc-400">
               {t('settings.displayDesc')}
