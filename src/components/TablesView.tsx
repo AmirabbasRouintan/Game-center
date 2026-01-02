@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { PlayHistoryItem } from '@/data/timerStore';
+import type { PaymentRecord, PlayHistoryItem } from '@/data/timerStore';
 import { tableSettingsStore, type AskCustomerTiming, type TableKind } from '@/data/tableSettingsStore';
 import { Play, Pause, Search, X, Filter, Pencil, Trash2, AlertCircle } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
+import { numberToWords } from '@/utils/numberToWords';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog,
@@ -199,6 +200,14 @@ export default function TablesView({
   // History edit/delete
   const [historyEditOpen, setHistoryEditOpen] = useState(false);
   const [historyEditDraft, setHistoryEditDraft] = useState<PlayHistoryItem | null>(null);
+
+  // "Pay now" (settlement) inputs inside edit modal
+  const [payNowAmount, setPayNowAmount] = useState('');
+  const [payNowNote, setPayNowNote] = useState('');
+
+  // Add-payment inputs inside edit modal (appends to payment history immediately)
+  const [newPaymentAmount, setNewPaymentAmount] = useState('');
+  const [newPaymentNote, setNewPaymentNote] = useState('');
 
   const copyToClipboard = async (value?: string | null) => {
     const v = (value || '').trim();
@@ -541,15 +550,78 @@ export default function TablesView({
   };
 
   const openHistoryEdit = (item: PlayHistoryItem) => {
-    setHistoryEditDraft({ ...item });
+    // Try to auto-fill client code from saved clients (DB) if it's missing
+    const existingCode = (item.clientCode || '').trim();
+    let resolvedCode = existingCode;
+
+    if (!resolvedCode) {
+      const byPhone = (item.phoneNumber || '').trim();
+      if (byPhone) {
+        const match = clients.find((c) => (c.phoneNumber || '').trim() === byPhone);
+        resolvedCode = (match?.code || '').trim();
+      }
+    }
+
+    if (!resolvedCode) {
+      const full = `${item.firstName || ''} ${item.lastName || ''}`.trim().toLowerCase();
+      if (full) {
+        const match = clients.find(
+          (c) => `${c.firstName || ''} ${c.lastName || ''}`.trim().toLowerCase() === full,
+        );
+        resolvedCode = (match?.code || '').trim();
+      }
+    }
+
+    setHistoryEditDraft({
+      ...item,
+      clientCode: (resolvedCode || existingCode).toUpperCase() || item.clientCode,
+    });
+    setPayNowAmount('');
+    setPayNowNote('');
+    setNewPaymentAmount('');
+    setNewPaymentNote('');
     setHistoryEditOpen(true);
   };
 
   const handleSaveHistoryEdit = () => {
     if (!historyEditDraft) return;
-    onUpdateHistory(historyEditDraft);
+
+    // If user entered a "pay now" amount, append it to paymentHistory before saving
+    const raw = Number(String(payNowAmount || '').replace(/,/g, ''));
+    const payNow = Number.isFinite(raw) ? raw : 0;
+
+    let nextDraft = historyEditDraft;
+
+    if (payNow > 0) {
+      const newPayment: PaymentRecord = {
+        amount: payNow,
+        date: new Date().toISOString(),
+        note: (payNowNote || '').trim() || undefined,
+      };
+
+      const updatedHistory = [...(nextDraft.paymentHistory || []), newPayment];
+      const total = Math.round(nextDraft.totalCost || 0);
+      const sumPaid = updatedHistory.reduce((s, p) => s + Math.max(0, Number(p.amount || 0)), 0);
+      const paidAmount = Math.min(total, Math.round(sumPaid));
+      const remainingAmount = Math.max(0, total - paidAmount);
+      const paidFully = remainingAmount === 0;
+
+      nextDraft = {
+        ...nextDraft,
+        paymentHistory: updatedHistory,
+        paidAmount,
+        remainingAmount,
+        paidFully,
+      };
+    }
+
+    onUpdateHistory(nextDraft);
     setHistoryEditOpen(false);
     setHistoryEditDraft(null);
+    setPayNowAmount('');
+    setPayNowNote('');
+    setNewPaymentAmount('');
+    setNewPaymentNote('');
   };
 
   const handleDeleteHistory = () => {
@@ -591,7 +663,21 @@ export default function TablesView({
       }));
     }
 
-    const playersCount = sessions[stopDraft.kind]?.players?.length ?? 0;
+    const sessionPlayers = (sessions[stopDraft.kind]?.players || [])
+      .map((p) => ({ code: (p.code || '').trim(), fullName: (p.fullName || '').trim() }))
+      .filter((p) => p.code.length > 0 || p.fullName.length > 0);
+    const playersCount = sessionPlayers.length;
+
+    const initialPaymentHistory: PaymentRecord[] = paidAmount > 0
+      ? [{
+          amount: paidAmount,
+          date: stopDraft.stoppedAt,
+          note:
+            language === 'fa'
+              ? `پرداخت اولیه ${Math.round(paidAmount).toLocaleString()}`
+              : `Initial payment ${Math.round(paidAmount).toLocaleString()}`,
+        }]
+      : [];
 
     const item: PlayHistoryItem = {
       id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
@@ -599,6 +685,7 @@ export default function TablesView({
       tableKind: stopDraft.kind,
       winnerCode: (winnerCodeInput || '').trim() || undefined,
       playersCount: playersCount > 0 ? playersCount : undefined,
+      players: sessionPlayers.length > 0 ? sessionPlayers : undefined,
       // keep compatibility with existing history schema
       cardId: 0,
       cardTitle:
@@ -619,6 +706,7 @@ export default function TablesView({
       paidFully,
       remainingAmount,
       createdAt: stopDraft.stoppedAt,
+      paymentHistory: initialPaymentHistory,
     };
 
     onAddHistory(item);
@@ -671,22 +759,7 @@ export default function TablesView({
             </p>
           </div>
 
-          {s.sessionCode && (
-            <button
-              type="button"
-              onClick={() => copyToClipboard(s.sessionCode)}
-              className="bg-black/30 border border-white/10 rounded-lg px-3 py-1 text-left hover:bg-black/40 transition"
-              title={language === 'fa' ? 'برای کپی کلیک کنید' : 'Click to copy'}
-            >
-              <div className="text-[10px] text-white/60">{language === 'fa' ? 'کد' : 'CODE'}</div>
-              <div className="text-sm font-mono tracking-widest text-white">{s.sessionCode}</div>
-              {copiedCode === s.sessionCode && (
-                <div className="text-[10px] text-emerald-300 mt-0.5">
-                  {language === 'fa' ? 'کپی شد' : 'Copied'}
-                </div>
-              )}
-            </button>
-          )}
+          {/* Session/table code hidden (client-code only UI) */}
         </div>
 
         <div className="mt-6 text-center">
@@ -999,16 +1072,25 @@ export default function TablesView({
                           )}
                         </td>
                         <td className="py-2 px-3 whitespace-nowrap font-mono tracking-widest">
-                          {h.winnerCode ? (
-                            <button
-                              type="button"
-                              onClick={() => copyToClipboard(h.winnerCode)}
-                              className="hover:underline underline-offset-4"
-                              title={language === 'fa' ? 'برای کپی کلیک کنید' : 'Click to copy'}
-                            >
-                              {h.winnerCode}
-                            </button>
-                          ) : (
+                          {h.winnerCode ? (() => {
+                            const winnerName = (h.players || []).find((p) => (p.code || '').trim() === h.winnerCode)?.fullName;
+                            const t = winnerName
+                              ? (language === 'fa'
+                                  ? `${winnerName} (برای کپی کلیک کنید)`
+                                  : `${winnerName} (click to copy)`)
+                              : (language === 'fa' ? 'برای کپی کلیک کنید' : 'Click to copy');
+
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => copyToClipboard(h.winnerCode)}
+                                className="hover:underline underline-offset-4"
+                                title={t}
+                              >
+                                {h.winnerCode}
+                              </button>
+                            );
+                          })() : (
                             '-'
                           )}
                         </td>
@@ -1035,12 +1117,27 @@ export default function TablesView({
                           </div>
                         </td>
                         <td className="py-2 px-3 whitespace-nowrap">
-                          {typeof h.playersCount === 'number' && h.playersCount > 0 ? (
+                          {(typeof h.playersCount === 'number' && h.playersCount > 0) || h.winnerCode ? (
                             <span
                               className={`inline-flex items-center justify-center w-7 h-7 rounded-full border border-white/15 bg-white/5 text-white/90 ${
                                 language === 'fa' ? 'ml-0' : ''
                               }`}
-                              title={language === 'fa' ? `تعداد بازیکن‌ها: ${h.playersCount}` : `Players: ${h.playersCount}`}
+                              title={(() => {
+                                const winnerName = h.winnerCode
+                                  ? (h.players || []).find((p) => (p.code || '').trim() === h.winnerCode)?.fullName
+                                  : undefined;
+                                const winnerPart = h.winnerCode
+                                  ? (winnerName
+                                      ? (language === 'fa'
+                                          ? `برنده: ${winnerName} (${h.winnerCode})`
+                                          : `Winner: ${winnerName} (${h.winnerCode})`)
+                                      : (language === 'fa' ? `برنده: ${h.winnerCode}` : `Winner: ${h.winnerCode}`))
+                                  : '';
+                                const playersPart = typeof h.playersCount === 'number' && h.playersCount > 0
+                                  ? (language === 'fa' ? `تعداد بازیکن‌ها: ${h.playersCount}` : `Players: ${h.playersCount}`)
+                                  : '';
+                                return [winnerPart, playersPart].filter(Boolean).join(' • ');
+                              })()}
                             >
                               <AlertCircle className="w-4 h-4" />
                             </span>
@@ -1081,37 +1178,40 @@ export default function TablesView({
             <AlertDialogTitle>{language === 'fa' ? 'شروع میز' : 'Start Table'}</AlertDialogTitle>
             <AlertDialogDescription className="text-white/70">
               {language === 'fa'
-                ? 'تعداد بازیکن‌ها را وارد کنید و نام آن‌ها را بنویسید. کد جلسه هم نمایش داده می‌شود.'
-                : 'Enter number of players and their names. Session code is shown below.'}
+                ? 'تعداد بازیکن‌ها را وارد کنید و نام آن‌ها را بنویسید.'
+                : 'Enter number of players and their names.'}
             </AlertDialogDescription>
           </AlertDialogHeader>
 
           <div className="space-y-3">
-            {startDraft?.sessionCode ? (
-              <div className="flex items-stretch gap-2">
-                <button
-                  type="button"
-                  onClick={() => copyToClipboard(startDraft.sessionCode)}
-                  className="flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-left hover:bg-white/10 transition"
-                  title={language === 'fa' ? 'برای کپی کد کلیک کنید' : 'Click to copy code'}
-                >
-                  <div className="text-[10px] text-white/60">{language === 'fa' ? 'کد' : 'CODE'}</div>
-                  <div className="text-base font-mono tracking-widest text-white">{startDraft.sessionCode}</div>
-                  {copiedCode === startDraft.sessionCode && (
-                    <div className="text-[10px] text-emerald-300 mt-0.5">{language === 'fa' ? 'کپی شد' : 'Copied'}</div>
-                  )}
-                </button>
+            {/* Session/table code hidden (client-code only UI) */}
+            <button
+              type="button"
+              onClick={() => setShowManualCodeInput((p) => !p)}
+              className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 hover:bg-white/10 transition flex items-center justify-center gap-2"
+              title={language === 'fa' ? 'ثبت/ویرایش کد مشتری' : 'Enter/edit client code'}
+            >
+              <Pencil className="w-4 h-4 text-white/80" />
+              <span className="text-sm text-white/80">{language === 'fa' ? 'کد مشتری' : 'Client code'}</span>
+            </button>
 
-                <button
-                  type="button"
-                  onClick={() => setShowManualCodeInput((p) => !p)}
-                  className="w-10 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 transition flex items-center justify-center"
-                  title={language === 'fa' ? 'ویرایش کد مشتری' : 'Edit client code'}
-                >
-                  <Pencil className="w-4 h-4 text-white/80" />
-                </button>
-              </div>
-            ) : null}
+            {/* (kept) optional manual client code input for existing client selection */}
+            {showManualCodeInput && (
+              <input
+                value={customerCodeInput}
+                onChange={(e) => {
+                  const v = e.target.value.toUpperCase();
+                  setCustomerCodeInput(v);
+                  const exact = clients.find((c) => (c.code || '').trim().toUpperCase() === v.trim());
+                  if (exact) {
+                    setSelectedClientId(exact.id);
+                    setCustomerFullName(`${exact.firstName || ''} ${exact.lastName || ''}`.trim());
+                  }
+                }}
+                placeholder={language === 'fa' ? 'کد مشتری (اختیاری) - مثال: A1' : 'Client code (optional) - e.g. A1'}
+                className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-primary font-mono tracking-widest"
+              />
+            )}
 
             <label className="block text-sm text-white/80">
               {language === 'fa' ? 'تعداد بازیکن‌ها' : 'How many players'}
@@ -1167,23 +1267,6 @@ export default function TablesView({
               </div>
             )}
 
-            {/* (kept) optional manual client code input for existing client selection */}
-            {showManualCodeInput && (
-              <input
-                value={customerCodeInput}
-                onChange={(e) => {
-                  const v = e.target.value.toUpperCase();
-                  setCustomerCodeInput(v);
-                  const exact = clients.find((c) => (c.code || '').trim().toUpperCase() === v.trim());
-                  if (exact) {
-                    setSelectedClientId(exact.id);
-                    setCustomerFullName(`${exact.firstName || ''} ${exact.lastName || ''}`.trim());
-                  }
-                }}
-                placeholder={language === 'fa' ? 'کد مشتری (اختیاری) - مثال: A1' : 'Client code (optional) - e.g. A1'}
-                className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-primary font-mono tracking-widest"
-              />
-            )}
           </div>
 
           <AlertDialogFooter>
@@ -1251,6 +1334,15 @@ export default function TablesView({
 
           {historyEditDraft && (
             <div className="space-y-3">
+              <input
+                value={historyEditDraft.clientCode || ''}
+                onChange={(e) =>
+                  setHistoryEditDraft((prev) => (prev ? { ...prev, clientCode: e.target.value.toUpperCase() } : prev))
+                }
+                placeholder={language === 'fa' ? 'کد مشتری' : 'Client code'}
+                className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-primary font-mono tracking-widest"
+              />
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <input
                   value={historyEditDraft.firstName || ''}
@@ -1270,15 +1362,6 @@ export default function TablesView({
                 />
               </div>
 
-              <input
-                value={historyEditDraft.clientCode || ''}
-                onChange={(e) =>
-                  setHistoryEditDraft((prev) => (prev ? { ...prev, clientCode: e.target.value.toUpperCase() } : prev))
-                }
-                placeholder={language === 'fa' ? 'کد مشتری' : 'Client code'}
-                className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-primary font-mono tracking-widest"
-              />
-
               <div className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/5 p-3">
                 <div className="text-sm text-white/90">{language === 'fa' ? 'پرداخت کامل؟' : 'Paid fully?'}</div>
                 <Switch
@@ -1296,31 +1379,188 @@ export default function TablesView({
                 />
               </div>
 
-              {!historyEditDraft.paidFully && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <input
-                    value={String(historyEditDraft.paidAmount ?? 0)}
-                    onChange={(e) => {
-                      const n = Number(String(e.target.value || '').replace(/,/g, ''));
-                      setHistoryEditDraft((prev) => {
-                        if (!prev) return prev;
-                        const total = Math.round(prev.totalCost || 0);
-                        const paidAmount = Math.max(0, Math.min(total, Number.isFinite(n) ? n : 0));
-                        const remainingAmount = Math.max(0, total - paidAmount);
-                        return { ...prev, paidAmount, remainingAmount };
-                      });
-                    }}
-                    placeholder={language === 'fa' ? 'مبلغ پرداختی' : 'Paid amount'}
-                    className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-primary"
-                  />
-                  <input
-                    value={String(historyEditDraft.remainingAmount ?? 0)}
-                    readOnly
-                    placeholder={language === 'fa' ? 'باقی‌مانده' : 'Remaining'}
-                    className="w-full px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-white/80"
-                  />
+              {!historyEditDraft.paidFully && (() => {
+                const total = Math.round(historyEditDraft.totalCost || 0);
+                const paidSoFar = (historyEditDraft.paymentHistory || []).reduce(
+                  (s, p) => s + Math.max(0, Number(p.amount || 0)),
+                  0,
+                );
+                const remainingDebt = Math.max(0, total - Math.round(paidSoFar));
+                const payNowPreview = Math.max(0, Math.round(Number(String(payNowAmount || '').replace(/,/g, '')) || 0));
+                const remainingAfterPayNow = Math.max(0, remainingDebt - payNowPreview);
+
+                return (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {/* Pay now */}
+                    <div className="space-y-1">
+                      <label className="block text-xs text-white/70">
+                        {language === 'fa' ? 'مبلغ پرداختی (الان برای تسویه)' : 'Pay now (to settle)'}
+                      </label>
+                      <input
+                        inputMode="numeric"
+                        value={payNowAmount}
+                        onChange={(e) => setPayNowAmount(e.target.value.replace(/[^0-9,]/g, ''))}
+                        placeholder={language === 'fa' ? 'مبلغ پرداخت الان' : 'Pay now amount'}
+                        className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                      <input
+                        value={payNowNote}
+                        onChange={(e) => setPayNowNote(e.target.value)}
+                        placeholder={language === 'fa' ? 'توضیح پرداخت (اختیاری)' : 'Payment note (optional)'}
+                        className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                      {(() => {
+                        const n = Number(String(payNowAmount || '').replace(/,/g, ''));
+                        const words = payNowAmount && !Number.isNaN(n) && n > 0 ? numberToWords(Math.round(n), language) : '';
+                        return words ? (
+                          <div className="text-xs text-emerald-300" dir={language === 'fa' ? 'rtl' : 'ltr'}>
+                            {words}
+                          </div>
+                        ) : null;
+                      })()}
+                    </div>
+
+                    {/* Remaining debt (after past payments) */}
+                    <div className="space-y-1">
+                      <label className="block text-xs text-white/70">
+                        {language === 'fa' ? 'باقی‌مانده (بعد از پرداخت‌های قبلی)' : 'Remaining (after past payments)'}
+                      </label>
+                      <input
+                        value={String(remainingDebt)}
+                        readOnly
+                        className="w-full px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-white/80"
+                      />
+                      {remainingDebt > 0 && (
+                        <div className="text-xs text-emerald-300" dir={language === 'fa' ? 'rtl' : 'ltr'}>
+                          {numberToWords(remainingDebt, language)}
+                        </div>
+                      )}
+
+                      {payNowPreview > 0 && (
+                        <div className="text-[11px] text-white/60" dir={language === 'fa' ? 'rtl' : 'ltr'}>
+                          {language === 'fa'
+                            ? `باقی‌مانده بعد از این پرداخت: ${remainingAfterPayNow.toLocaleString()}`
+                            : `Remaining after this payment: ${remainingAfterPayNow.toLocaleString()}`}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Payment history (per session) */}
+              <div className="mt-3 rounded-lg border border-white/10 bg-white/5 p-3">
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <div className="text-sm text-white/90 font-semibold">
+                    {language === 'fa' ? 'تاریخچه پرداخت‌ها' : 'Payment History'}
+                  </div>
+                  <div className="text-xs text-white/60">
+                    {(historyEditDraft.paymentHistory || []).length}
+                  </div>
                 </div>
-              )}
+
+                {historyEditDraft.paymentHistory && historyEditDraft.paymentHistory.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs border border-white/10 rounded-lg overflow-hidden" dir={language === 'fa' ? 'rtl' : 'ltr'}>
+                      <thead>
+                        <tr className="text-white/70 bg-white/5 border-b border-white/10">
+                          <th className={`${language === 'fa' ? 'text-right' : 'text-left'} py-2 px-2`}>{language === 'fa' ? 'تاریخ' : 'Date'}</th>
+                          <th className={`${language === 'fa' ? 'text-right' : 'text-left'} py-2 px-2`}>{language === 'fa' ? 'مبلغ' : 'Amount'}</th>
+                          <th className={`${language === 'fa' ? 'text-right' : 'text-left'} py-2 px-2`}>{language === 'fa' ? 'توضیح' : 'Note'}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {historyEditDraft.paymentHistory.map((payment, idx) => (
+                          <tr key={idx} className="border-b border-white/10 last:border-0 text-white/90">
+                            <td className="py-2 px-2 whitespace-nowrap text-white/80">
+                              {payment.date ? new Date(payment.date).toLocaleString(language === 'fa' ? 'fa-IR' : 'en-US') : '-'}
+                            </td>
+                            <td className="py-2 px-2 whitespace-nowrap">{Math.round(payment.amount || 0).toLocaleString()}</td>
+                            <td className="py-2 px-2 truncate max-w-[240px]">{payment.note || '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="text-xs text-white/50">
+                    {language === 'fa' ? 'هنوز پرداختی ثبت نشده است.' : 'No payments recorded yet.'}
+                  </p>
+                )}
+
+                {/* Add new payment */}
+                <div className="mt-3 grid grid-cols-1 sm:grid-cols-5 gap-2">
+                  <div className="sm:col-span-2 space-y-1">
+                    <label className="block text-xs text-white/70">
+                      {language === 'fa' ? 'مبلغ پرداخت جدید' : 'New payment amount'}
+                    </label>
+                    <input
+                      inputMode="numeric"
+                      value={newPaymentAmount}
+                    onChange={(e) => setNewPaymentAmount(e.target.value.replace(/[^0-9,]/g, ''))}
+                      placeholder={language === 'fa' ? 'مبلغ پرداخت جدید' : 'New payment amount'}
+                      className="w-full px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-primary"
+                    />
+                    {(() => {
+                      const n = Number(String(newPaymentAmount || '').replace(/,/g, ''));
+                      const words = newPaymentAmount && !Number.isNaN(n) && n > 0 ? numberToWords(Math.round(n), language) : '';
+                      return words ? (
+                        <div className="text-xs text-emerald-300" dir={language === 'fa' ? 'rtl' : 'ltr'}>
+                          {words}
+                        </div>
+                      ) : null;
+                    })()}
+                  </div>
+
+                  <div className="sm:col-span-2 space-y-1">
+                    <label className="block text-xs text-white/70">
+                      {language === 'fa' ? 'توضیح (اختیاری)' : 'Note (optional)'}
+                    </label>
+                    <input
+                      value={newPaymentNote}
+                    onChange={(e) => setNewPaymentNote(e.target.value)}
+                      placeholder={language === 'fa' ? 'توضیح (اختیاری)' : 'Note (optional)'}
+                      className="w-full px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
+
+                  <Button
+                    type="button"
+                    className="sm:col-span-1"
+                    disabled={!newPaymentAmount || Number(String(newPaymentAmount).replace(/,/g, '')) <= 0}
+                    onClick={() => {
+                      const raw = Number(String(newPaymentAmount || '').replace(/,/g, ''));
+                      const amount = Number.isFinite(raw) ? raw : 0;
+                      if (!historyEditDraft || amount <= 0) return;
+
+                      const newPayment: PaymentRecord = {
+                        amount,
+                        date: new Date().toISOString(),
+                        note: (newPaymentNote || '').trim() || undefined,
+                      };
+
+                      const updated = [...(historyEditDraft.paymentHistory || []), newPayment];
+                      const total = Math.round(historyEditDraft.totalCost || 0);
+                      const sumPaid = updated.reduce((s, p) => s + Math.max(0, Number(p.amount || 0)), 0);
+                      const paidAmount = Math.min(total, Math.round(sumPaid));
+                      const remainingAmount = Math.max(0, total - paidAmount);
+                      const paidFully = remainingAmount === 0;
+
+                      setHistoryEditDraft({
+                        ...historyEditDraft,
+                        paymentHistory: updated,
+                        paidAmount,
+                        remainingAmount,
+                        paidFully,
+                      });
+                      setNewPaymentAmount('');
+                      setNewPaymentNote('');
+                    }}
+                  >
+                    {language === 'fa' ? 'افزودن' : 'Add'}
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
 
@@ -1361,17 +1601,21 @@ export default function TablesView({
           </AlertDialogHeader>
 
           <div className="space-y-3">
-            <label className="block text-sm text-white/80">
-              {language === 'fa' ? 'نام و نام خانوادگی' : 'Full name'}
-            </label>
+            {/* Full name: show only when we ask customer info on STOP */}
+            {stopDraft && !isAskCustomerOnStart(stopDraft.kind) && (
+              <>
+                <label className="block text-sm text-white/80">
+                  {language === 'fa' ? 'نام و نام خانوادگی' : 'Full name'}
+                </label>
 
-            <input
-              value={customerFullName}
-              onChange={(e) => setCustomerFullName(e.target.value)}
-              placeholder={language === 'fa' ? 'نام و نام خانوادگی' : 'Full name'}
-              className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-primary"
-              disabled={stopDraft ? isAskCustomerOnStart(stopDraft.kind) : false}
-            />
+                <input
+                  value={customerFullName}
+                  onChange={(e) => setCustomerFullName(e.target.value)}
+                  placeholder={language === 'fa' ? 'نام و نام خانوادگی' : 'Full name'}
+                  className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </>
+            )}
 
             <div className="flex items-center justify-between">
               <label className="block text-sm text-white/80">
@@ -1454,7 +1698,11 @@ export default function TablesView({
               <div className="text-sm text-white/90">{language === 'fa' ? 'پرداخت کامل؟' : 'Paid fully?'}</div>
               <Switch checked={paidFullyChecked} onCheckedChange={(v) => {
                 setPaidFullyChecked(!!v);
-                if (!!v && stopDraft) setPaidAmountInput(String(Math.round(stopDraft.totalCost || 0)));
+                if (!!v && stopDraft) {
+                  setPaidAmountInput(String(Math.round(stopDraft.totalCost || 0)));
+                } else {
+                  setPaidAmountInput('');
+                }
               }} />
             </div>
 
@@ -1469,12 +1717,40 @@ export default function TablesView({
                   placeholder={language === 'fa' ? 'مثال: 100000' : 'Example: 100000'}
                   className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-primary"
                 />
-                {stopDraft && (
-                  <div className="text-xs text-white/70">
-                    {language === 'fa' ? 'باقی‌مانده:' : 'Remaining:'}{' '}
-                    {Math.max(0, Math.round(stopDraft.totalCost || 0) - Math.max(0, Number(String(paidAmountInput || '').replace(/,/g, '')) || 0)).toLocaleString()}
-                  </div>
-                )}
+                {(() => {
+                  const n = Number(String(paidAmountInput || '').replace(/,/g, ''));
+                  const words = paidAmountInput && !Number.isNaN(n) && n > 0 ? numberToWords(Math.round(n), language) : '';
+                  return words ? (
+                    <div className="text-xs text-emerald-300 mt-1" dir={language === 'fa' ? 'rtl' : 'ltr'}>
+                      {words}
+                    </div>
+                  ) : null;
+                })()}
+                {stopDraft && (() => {
+                  const total = Math.round(stopDraft.totalCost || 0);
+                  const paid = Math.max(0, Number(String(paidAmountInput || '').replace(/,/g, '')) || 0);
+                  const remaining = Math.max(0, total - paid);
+                  return (
+                    <div className="rounded-lg border border-amber-400/30 bg-amber-400/10 p-3">
+                      <div className="text-xs text-white/70">
+                        {language === 'fa' ? 'مبلغ باقیمانده (بدهی):' : 'Remaining amount (Debt):'}
+                      </div>
+                      <div className="mt-1 text-lg font-semibold text-amber-200">
+                        {remaining.toLocaleString()}
+                      </div>
+                      {remaining > 0 && (
+                        <div className="mt-1 text-xs text-emerald-300" dir={language === 'fa' ? 'rtl' : 'ltr'}>
+                          {numberToWords(remaining, language)}
+                        </div>
+                      )}
+                      <div className="mt-1 text-[11px] text-white/60">
+                        {language === 'fa'
+                          ? 'این مبلغ باید در پرداخت‌های بعدی تسویه شود.'
+                          : 'This amount should be paid later.'}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             )}
 

@@ -20,6 +20,12 @@ export type Client = {
   createdAt: string;
 };
 
+export type PaymentRecord = {
+  amount: number;
+  date: string;
+  note?: string;
+};
+
 export type PlayHistoryItem = {
   id: string;
   // where this history row came from
@@ -32,6 +38,9 @@ export type PlayHistoryItem = {
 
   // for table sessions: how many players were in this match
   playersCount?: number;
+
+  // for table sessions: list of players (so we can resolve winner code -> name later)
+  players?: { code: string; fullName: string }[];
 
   cardId: number;
   cardTitle: string;
@@ -50,6 +59,8 @@ export type PlayHistoryItem = {
   paidFully: boolean;
   remainingAmount: number;
   createdAt: string;
+  // payment history tracking
+  paymentHistory?: PaymentRecord[];
 };
 
 const KEYS = {

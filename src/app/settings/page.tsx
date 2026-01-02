@@ -11,6 +11,8 @@ import { numberToWords } from "@/utils/numberToWords";
 import ShinyText from "@/components/ShinyText";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { settingsStore } from "@/data/settingsStore";
+import { tableSettingsStore } from "@/data/tableSettingsStore";
+import type { PlayHistoryItem } from "@/data/timerStore";
 import { timerStore } from "@/data/timerStore";
 import { competitionsStore } from "@/data/competitionsStore";
 
@@ -41,6 +43,13 @@ export default function SettingsPage() {
 
   const [authEnabled, setAuthEnabled] = useState<boolean>(false);
 
+  // Table history bulk delete
+  const [tableHistoryItems, setTableHistoryItems] = useState<PlayHistoryItem[]>([]);
+  const [selectedTableHistoryIds, setSelectedTableHistoryIds] = useState<Record<string, boolean>>({});
+  const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
+
+  const selectedTableHistoryCount = Object.values(selectedTableHistoryIds).filter(Boolean).length;
+
 
 
   // Home page UI
@@ -51,6 +60,9 @@ export default function SettingsPage() {
   useEffect(() => {
     const load = async () => {
       const s = await settingsStore.load();
+      const h = await timerStore.loadHistory();
+      setTableHistoryItems((h || []).filter((x) => x.sessionType === 'table'));
+      setSelectedTableHistoryIds({});
       setDarkVeilEnabled(s.darkVeilEnabled);
       setDarkVeilOpacity(s.darkVeilOpacity);
       setCostPerHour(s.costPerHour);
@@ -205,12 +217,43 @@ export default function SettingsPage() {
     await timerStore.saveClients([]);
     await timerStore.saveHistory([]);
     competitionsStore.saveTournaments([]);
+    setTableHistoryItems([]);
+    setSelectedTableHistoryIds({});
     setShowClearDialog(false);
     alert(t('settings.clearWarning'));
   };
   const saveCostPerHour = () => {
     settingsStore.savePartial({ costPerHour });
     alert(t('settings.nameUpdated'));
+  };
+
+  const resetAllSettingsToDefault = async () => {
+    const ok = confirm(language === 'fa' ? 'بازگردانی تنظیمات به حالت پیش‌فرض؟' : 'Reset settings to default?');
+    if (!ok) return;
+
+    const s = await settingsStore.resetToDefault();
+    await tableSettingsStore.resetToDefault();
+
+    // Update local UI state
+    setDarkVeilEnabled(s.darkVeilEnabled);
+    setDarkVeilOpacity(s.darkVeilOpacity);
+    setCostPerHour(s.costPerHour);
+    setTableCostPerHourSnooker(s.tableCostPerHourSnooker || '');
+    setTableCostPerHourEightBall(s.tableCostPerHourEightBall || '');
+    setGameCenterName(s.gameCenterName);
+    setBackgroundImage(s.backgroundImage);
+    setHomeShowTopTabs(s.homeShowTopTabs);
+    setHomeDefaultTab(s.homeDefaultTab);
+    setAdminPasswordHash(s.adminPassword);
+    setAuthEnabled(!!s.authEnabled);
+
+    // Broadcast events used by the rest of the app
+    window.dispatchEvent(new CustomEvent('darkVeilToggle', { detail: s.darkVeilEnabled }));
+    window.dispatchEvent(new CustomEvent('darkVeilOpacityChange', { detail: s.darkVeilOpacity }));
+    window.dispatchEvent(new CustomEvent('gameCenterNameChange', { detail: String(s.gameCenterName || '') }));
+    window.dispatchEvent(new CustomEvent('backgroundImageChange', { detail: s.backgroundImage }));
+
+    alert(language === 'fa' ? 'تنظیمات به حالت پیش‌فرض بازگردانی شد.' : 'Settings reset to default.');
   };
 
   const saveTableCostsPerHour = async () => {
@@ -304,10 +347,41 @@ export default function SettingsPage() {
   const costInWords = costPerHour && !isNaN(Number(costPerHour)) && Number(costPerHour) > 0 ? numberToWords(Number(costPerHour), language) : '';
 
 
+  const doBulkDeleteTableHistory = async () => {
+    const ids = Object.entries(selectedTableHistoryIds)
+      .filter(([, v]) => v)
+      .map(([id]) => id);
+    if (ids.length === 0) return;
+
+    const all = await timerStore.loadHistory();
+    const next = (all || []).filter((h) => !(h.sessionType === 'table' && ids.includes(h.id)));
+    await timerStore.saveHistory(next);
+
+    setTableHistoryItems((prev) => prev.filter((h) => !ids.includes(h.id)));
+    setSelectedTableHistoryIds({});
+    setShowBulkDeleteDialog(false);
+  };
+
   return <main className="min-h-screen py-10 animate-in fade-in duration-500 pt-24">
       <div className="mx-auto w-[80%]">
-        <h1 className="text-3xl font-bold text-white animate-in fade-in slide-in-from-bottom-4 duration-700">{t('settings.title')}</h1>
-        <ShinyText text={t('settings.subtitle')} disabled={false} speed={3} className="mt-2 text-zinc-400 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-100" />
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+          <div>
+            <h1 className="text-3xl font-bold text-white animate-in fade-in slide-in-from-bottom-4 duration-700">{t('settings.title')}</h1>
+            <ShinyText text={t('settings.subtitle')} disabled={false} speed={3} className="mt-2 text-zinc-400 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-100" />
+          </div>
+
+          <div className="flex gap-2 sm:mt-1">
+            <Button
+              type="button"
+              variant="outline"
+              className="bg-white/5 border-white/15 text-white hover:bg-white/10"
+              onClick={resetAllSettingsToDefault}
+              title={language === 'fa' ? 'بازگردانی تنظیمات به حالت پیش‌فرض' : 'Reset to defaults'}
+            >
+              {language === 'fa' ? 'ریست تنظیمات' : 'Reset settings'}
+            </Button>
+          </div>
+        </div>
 
         {}
         <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -423,6 +497,103 @@ export default function SettingsPage() {
           </section>
 
 
+
+          <section className="bg-white/10 dark:bg-white/5 backdrop-blur-lg rounded-lg border border-white/20 p-6 shadow-lg transition-all duration-300 hover:shadow-xl hover:border-white/30 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-200">
+            <h2 className="text-xl font-semibold text-white">{language === 'fa' ? 'تاریخچه پرداخت میز' : 'Table payment history'}</h2>
+            <p className="mt-2 text-sm text-zinc-400">
+              {language === 'fa'
+                ? 'انتخاب چندتایی و حذف گروهی رکوردهای تاریخچه پرداخت میز.'
+                : 'Bulk select and delete table payment history records.'}
+            </p>
+
+            <div className="mt-4 flex items-center justify-between gap-3 flex-wrap">
+              <label className="inline-flex items-center gap-2 text-sm text-white/90">
+                <input
+                  type="checkbox"
+                  checked={tableHistoryItems.length > 0 && selectedTableHistoryCount === tableHistoryItems.length}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    const next: Record<string, boolean> = {};
+                    for (const h of tableHistoryItems) next[h.id] = checked;
+                    setSelectedTableHistoryIds(next);
+                  }}
+                  className="h-4 w-4"
+                />
+                <span>
+                  {language === 'fa'
+                    ? `انتخاب همه (${selectedTableHistoryCount}/${tableHistoryItems.length})`
+                    : `Select all (${selectedTableHistoryCount}/${tableHistoryItems.length})`}
+                </span>
+              </label>
+
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={selectedTableHistoryCount === 0}
+                onClick={() => setShowBulkDeleteDialog(true)}
+              >
+                {language === 'fa' ? 'حذف انتخاب‌شده‌ها' : 'Delete selected'}
+              </Button>
+            </div>
+
+            <div className="mt-4 max-h-72 overflow-auto rounded-lg border border-white/10 bg-white/5">
+              {tableHistoryItems.length === 0 ? (
+                <div className="p-4 text-sm text-zinc-400">
+                  {language === 'fa' ? 'رکوردی برای میز ثبت نشده است.' : 'No table records found.'}
+                </div>
+              ) : (
+                <table className="w-full text-sm" dir={language === 'fa' ? 'rtl' : 'ltr'}>
+                  <thead className="text-white/70">
+                    <tr className="border-b border-white/10">
+                      <th className="py-2 px-3 w-10"></th>
+                      <th className={`py-2 px-3 ${language === 'fa' ? 'text-right' : 'text-left'}`}>{language === 'fa' ? 'مشتری' : 'Client'}</th>
+                      <th className={`py-2 px-3 ${language === 'fa' ? 'text-right' : 'text-left'}`}>{language === 'fa' ? 'کد' : 'Code'}</th>
+                      <th className={`py-2 px-3 ${language === 'fa' ? 'text-right' : 'text-left'}`}>{language === 'fa' ? 'مبلغ' : 'Paid'}</th>
+                      <th className={`py-2 px-3 ${language === 'fa' ? 'text-right' : 'text-left'}`}>{language === 'fa' ? 'تاریخ' : 'Date'}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tableHistoryItems
+                      .slice()
+                      .sort((a, b) => new Date(b.createdAt || b.stoppedAt || 0).getTime() - new Date(a.createdAt || a.stoppedAt || 0).getTime())
+                      .slice(0, 200)
+                      .map((h) => {
+                        const name = `${h.firstName || ''} ${h.lastName || ''}`.trim() || '-';
+                        const code = (h.clientCode || '').trim() || '-';
+                        const paid = Math.round(h.paidAmount || h.totalCost || 0).toLocaleString();
+                        const date = h.stoppedAt || h.createdAt;
+                        return (
+                          <tr key={h.id} className="border-b border-white/5 last:border-0 text-white/90">
+                            <td className="py-2 px-3">
+                              <input
+                                type="checkbox"
+                                checked={!!selectedTableHistoryIds[h.id]}
+                                onChange={(e) =>
+                                  setSelectedTableHistoryIds((prev) => ({ ...prev, [h.id]: e.target.checked }))
+                                }
+                                className="h-4 w-4"
+                              />
+                            </td>
+                            <td className="py-2 px-3 whitespace-nowrap">{name}</td>
+                            <td className="py-2 px-3 whitespace-nowrap font-mono tracking-widest">{code}</td>
+                            <td className="py-2 px-3 whitespace-nowrap">{paid}</td>
+                            <td className="py-2 px-3 whitespace-nowrap text-zinc-300">
+                              {date ? new Date(date).toLocaleString(language === 'fa' ? 'fa-IR' : undefined) : ''}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            <p className="mt-2 text-xs text-zinc-400">
+              {language === 'fa'
+                ? 'نمایش تا ۲۰۰ رکورد آخر در تنظیمات.'
+                : 'Showing up to the latest 200 records in settings.'}
+            </p>
+          </section>
 
           <section className="bg-white/10 dark:bg-white/5 backdrop-blur-lg rounded-lg border border-white/20 p-6 shadow-lg transition-all duration-300 hover:shadow-xl hover:border-white/30 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-200">
             <h2 className="text-xl font-semibold text-white">{t('settings.display')}</h2>
@@ -640,6 +811,32 @@ export default function SettingsPage() {
       </div>
 
       {}
+      <AlertDialog open={showBulkDeleteDialog} onOpenChange={setShowBulkDeleteDialog}>
+        <AlertDialogContent className="bg-white/10 dark:bg-black/80 backdrop-blur-lg border border-white/20 text-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-white">
+              {language === 'fa' ? 'حذف گروهی تاریخچه پرداخت میز' : 'Bulk delete table payment history'}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-zinc-300">
+              {language === 'fa'
+                ? `آیا مطمئن هستید؟ (${selectedTableHistoryCount} رکورد حذف می‌شود)`
+                : `Are you sure? (${selectedTableHistoryCount} records will be deleted)`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-white/10 border-white/20 text-white hover:bg-white/20">
+              {language === 'fa' ? 'انصراف' : 'Cancel'}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={doBulkDeleteTableHistory}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {language === 'fa' ? 'حذف' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <AlertDialog open={showClearDialog} onOpenChange={setShowClearDialog}>
         <AlertDialogContent className="bg-white/10 dark:bg-black/80 backdrop-blur-lg border border-white/20 text-white">
           <AlertDialogHeader>

@@ -9,7 +9,7 @@ export type TableSettings = {
 
 const KEY = 'tableSettings';
 
-const defaultSettings: TableSettings = {
+export const defaultTableSettings: TableSettings = {
   askCustomerTimingByKind: {
     snooker: 'stop',
     eightBall: 'stop',
@@ -18,14 +18,14 @@ const defaultSettings: TableSettings = {
 
 export const tableSettingsStore = {
   async load(): Promise<TableSettings> {
-    const loaded = await loadFromApi<TableSettings>(KEY, defaultSettings);
+    const loaded = await loadFromApi<TableSettings>(KEY, defaultTableSettings);
 
     // Defensive merge for forward/backward compatibility
     return {
-      ...defaultSettings,
+      ...defaultTableSettings,
       ...loaded,
       askCustomerTimingByKind: {
-        ...defaultSettings.askCustomerTimingByKind,
+        ...defaultTableSettings.askCustomerTimingByKind,
         ...(loaded?.askCustomerTimingByKind || {}),
       },
     };
@@ -50,5 +50,10 @@ export const tableSettingsStore = {
         [kind]: timing,
       } as Record<TableKind, AskCustomerTiming>,
     });
+  },
+
+  async resetToDefault(): Promise<TableSettings> {
+    await saveToApi(KEY, defaultTableSettings);
+    return defaultTableSettings;
   },
 };

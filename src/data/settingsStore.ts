@@ -25,7 +25,7 @@ export type AppSettings = {
 
 const KEY = 'appSettings';
 
-const defaultSettings: AppSettings = {
+export const defaultAppSettings: AppSettings = {
   darkVeilEnabled: true,
   darkVeilOpacity: 0.5,
   darkVeilTint: '#ffffff',
@@ -49,7 +49,7 @@ const defaultSettings: AppSettings = {
 export const settingsStore = {
   async load(): Promise<AppSettings> {
     // Load the entire settings object
-    return loadFromApi<AppSettings>(KEY, defaultSettings);
+    return loadFromApi<AppSettings>(KEY, defaultAppSettings);
   },
 
   async savePartial(patch: Partial<AppSettings>): Promise<void> {
@@ -64,5 +64,10 @@ export const settingsStore = {
   // Helper to save all (if needed)
   async save(settings: AppSettings): Promise<void> {
     await saveToApi(KEY, settings);
-  }
+  },
+
+  async resetToDefault(): Promise<AppSettings> {
+    await saveToApi(KEY, defaultAppSettings);
+    return defaultAppSettings;
+  },
 };
