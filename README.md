@@ -6,6 +6,12 @@
   A web-based billiard hall management system built with Next.js and React. Manage tables, timers, clients, tournaments, and payments.
 </p>
 
+## About
+
+A complete management platform for billiard halls, snooker clubs, and game centers.
+
+Game Center is a full-featured management system for billiard and pool halls. It handles table timers with cost calculation, client management with auto-generated codes, tournament brackets with prize pools, and payment tracking — all with a bilingual English/Persian interface and animated UI.
+
 <div align="center">
 
 ![Next.js](https://img.shields.io/badge/Next.js-000000?style=for-the-badge&logo=nextdotjs&logoColor=white)
@@ -16,10 +22,6 @@
 ![GSAP](https://img.shields.io/badge/GSAP-88CE02?style=for-the-badge&logo=greensock&logoColor=white)
 
 </div>
-
-## About
-
-Game Center is a full-featured management system for billiard and pool halls. It handles table timers with cost calculation, client management with auto-generated codes, tournament brackets with prize pools, and payment tracking — all with a bilingual English/Persian interface and animated UI.
 
 ## Features
 
