@@ -53,15 +53,6 @@ Game Center is a full-featured management system for billiard and pool halls. It
 
 </div>
 
-## Screenshots
-
-<div align="center">
-
-![Snooker Table](public/snoker.png)
-![Eight-Ball Table](public/eightball.png)
-
-</div>
-
 ## Getting Started
 
 ### Prerequisites
